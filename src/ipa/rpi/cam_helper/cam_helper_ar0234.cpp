@@ -18,6 +18,8 @@ public:
 	CamHelperAr0234();
 	uint32_t gainCode(double gain) const override;
 	double gain(uint32_t gainCode) const override;
+	unsigned int hideFramesStartup() const override;
+	unsigned int hideFramesModeSwitch() const override;
 
 private:
 	/*
@@ -114,6 +116,18 @@ double CamHelperAr0234::gain(uint32_t gainCode) const
 	m += std::numeric_limits<decltype(m)>::epsilon();
 
 	return m * (1 << coarse) / (1.0 - (fine / d1) / d2);
+}
+
+unsigned int CamHelperAr0234::hideFramesStartup() const
+{
+	/* On startup, we seem to get 1 bad frame. */
+	return 1;
+}
+
+unsigned int CamHelperAr0234::hideFramesModeSwitch() const
+{
+	/* After a mode switch, we seem to get 1 bad frame. */
+	return 1;
 }
 
 static CamHelper *create()

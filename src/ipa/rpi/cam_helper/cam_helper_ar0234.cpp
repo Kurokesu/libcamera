@@ -68,7 +68,7 @@ uint32_t CamHelperAr0234::gainCode(double gain) const
 
 double CamHelperAr0234::gain(uint32_t gainCode) const
 {
-	unsigned int coarse = gainCode >> 4;
+	unsigned int coarse = (gainCode >> 4) & 0x7;
 	unsigned int fine = gainCode & 0xf;
 	unsigned int d1;
 	double d2, m;

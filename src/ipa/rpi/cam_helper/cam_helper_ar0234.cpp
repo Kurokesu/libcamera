@@ -9,8 +9,22 @@
 #include <cmath>
 
 #include "cam_helper.h"
+#include "md_parser.h"
 
 using namespace RPiController;
+/*
+ * We care about two gain registers and a pair of exposure registers. Their
+ * I2C addresses from the OnSemi AR0234 datasheet:
+ */
+#define REG_EXPOSURE 0x3012
+#define REG_ANALOG_GAIN 0x3060
+#define REG_FRAME_LENGTH 0x300A
+#define REG_LINE_LENGTH 0x300C
+#define REG_TEMPSENS 0x30B2
+#define REG_TEMPSENS_CALIB1 0x30C6 // Contains temperature reading value at 55C
+
+constexpr std::initializer_list<uint16_t> registerList = { REG_EXPOSURE, REG_ANALOG_GAIN, REG_FRAME_LENGTH,
+							   REG_LINE_LENGTH, REG_TEMPSENS, REG_TEMPSENS_CALIB1 };
 
 class CamHelperAr0234 : public CamHelper
 {
@@ -20,6 +34,7 @@ public:
 	double gain(uint32_t gainCode) const override;
 	unsigned int hideFramesStartup() const override;
 	unsigned int hideFramesModeSwitch() const override;
+	bool sensorEmbeddedDataPresent() const override;
 
 private:
 	/*
@@ -27,15 +42,13 @@ private:
 	 * in units of lines.
 	 */
 	static constexpr int frameIntegrationDiff = 4;
+
+	void populateMetadata(const MdParser::RegisterMap &registers,
+			      Metadata &metadata) const override;
 };
 
-/*
- * Ar0234 doesn't output metadata, so we have to use the "unicam parser" which
- * works by counting frames.
- */
-
 CamHelperAr0234::CamHelperAr0234()
-	: CamHelper({}, frameIntegrationDiff)
+	: CamHelper(std::make_unique<MdParserOnSemi>(&registerList), frameIntegrationDiff)
 {
 }
 
@@ -128,6 +141,26 @@ unsigned int CamHelperAr0234::hideFramesModeSwitch() const
 {
 	/* After a mode switch, we seem to get 1 bad frame. */
 	return 1;
+}
+
+bool CamHelperAr0234::sensorEmbeddedDataPresent() const
+{
+	return true;
+}
+
+void CamHelperAr0234::populateMetadata(const MdParser::RegisterMap &registers,
+				       Metadata &metadata) const
+{
+	DeviceStatus deviceStatus;
+
+	deviceStatus.lineLength = 4.0 * lineLengthPckToDuration(registers.at(REG_LINE_LENGTH));
+	deviceStatus.exposureTime = exposure(registers.at(REG_EXPOSURE),
+					     deviceStatus.lineLength);
+	deviceStatus.analogueGain = gain(registers.at(REG_ANALOG_GAIN));
+	deviceStatus.frameLength = registers.at(REG_FRAME_LENGTH);
+	deviceStatus.sensorTemperature = 0.7 * (int(registers.at(REG_TEMPSENS) & 0x3ff) - int(registers.at(REG_TEMPSENS_CALIB1) & 0x3ff)) + 55.0;
+
+	metadata.set("device.status", deviceStatus);
 }
 
 static CamHelper *create()

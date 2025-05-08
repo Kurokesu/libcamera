@@ -19,12 +19,12 @@ using namespace RPiController;
 #define REG_EXPOSURE 0x3012
 #define REG_ANALOG_GAIN 0x3060
 #define REG_FRAME_LENGTH 0x300A
-#define REG_LINE_LENGTH 0x300C
+#define REG_LINE_LENGTH_PCK 0x300C
 #define REG_TEMPSENS 0x30B2
 #define REG_TEMPSENS_CALIB1 0x30C6 // Contains temperature reading value at 55C
 
 constexpr std::initializer_list<uint16_t> registerList = { REG_EXPOSURE, REG_ANALOG_GAIN, REG_FRAME_LENGTH,
-							   REG_LINE_LENGTH, REG_TEMPSENS, REG_TEMPSENS_CALIB1 };
+							   REG_LINE_LENGTH_PCK, REG_TEMPSENS, REG_TEMPSENS_CALIB1 };
 
 class CamHelperAr0234 : public CamHelper
 {
@@ -153,7 +153,7 @@ void CamHelperAr0234::populateMetadata(const MdParser::RegisterMap &registers,
 {
 	DeviceStatus deviceStatus;
 
-	deviceStatus.lineLength = 4.0 * lineLengthPckToDuration(registers.at(REG_LINE_LENGTH));
+	deviceStatus.lineLength = 4.0 * lineLengthPckToDuration(registers.at(REG_LINE_LENGTH_PCK));
 	deviceStatus.exposureTime = exposure(registers.at(REG_EXPOSURE),
 					     deviceStatus.lineLength);
 	deviceStatus.analogueGain = gain(registers.at(REG_ANALOG_GAIN));

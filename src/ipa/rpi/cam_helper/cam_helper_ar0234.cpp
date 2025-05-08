@@ -12,16 +12,17 @@
 #include "md_parser.h"
 
 using namespace RPiController;
-/*
- * We care about two gain registers and a pair of exposure registers. Their
- * I2C addresses from the OnSemi AR0234 datasheet:
- */
+
+#define TEMPERATURE_MASK 0x3FF
+#define TEMPERATURE_SLOPE 0.7
+#define TEMPERATURE_CALIBRATION 55.0
+
 #define REG_EXPOSURE 0x3012
 #define REG_ANALOG_GAIN 0x3060
 #define REG_FRAME_LENGTH 0x300A
 #define REG_LINE_LENGTH_PCK 0x300C
 #define REG_TEMPSENS 0x30B2
-#define REG_TEMPSENS_CALIB1 0x30C6 // Contains temperature reading value at 55C
+#define REG_TEMPSENS_CALIB1 0x30C6 // Contains temperature reading value at 55°C
 
 constexpr std::initializer_list<uint16_t> registerList = { REG_EXPOSURE, REG_ANALOG_GAIN, REG_FRAME_LENGTH,
 							   REG_LINE_LENGTH_PCK, REG_TEMPSENS, REG_TEMPSENS_CALIB1 };
@@ -158,7 +159,8 @@ void CamHelperAr0234::populateMetadata(const MdParser::RegisterMap &registers,
 					     deviceStatus.lineLength);
 	deviceStatus.analogueGain = gain(registers.at(REG_ANALOG_GAIN));
 	deviceStatus.frameLength = registers.at(REG_FRAME_LENGTH);
-	deviceStatus.sensorTemperature = 0.7 * (int(registers.at(REG_TEMPSENS) & 0x3ff) - int(registers.at(REG_TEMPSENS_CALIB1) & 0x3ff)) + 55.0;
+	deviceStatus.sensorTemperature = TEMPERATURE_SLOPE * (int(registers.at(REG_TEMPSENS) & TEMPERATURE_MASK) 
+		- int(registers.at(REG_TEMPSENS_CALIB1) & TEMPERATURE_MASK)) + TEMPERATURE_CALIBRATION;
 
 	metadata.set("device.status", deviceStatus);
 }

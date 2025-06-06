@@ -107,7 +107,7 @@ const CameraSensorProperties *CameraSensorProperties::get(const std::string &sen
 			.sensorDelays = { },
 		} },
 		{ "ar0822", {
-			.unitCellSize = { 3000, 3000 },
+			.unitCellSize = { 2000, 2000 },
 			.testPatternModes = {
 				{ controls::draft::TestPatternModeOff, 0 },
 				{ controls::draft::TestPatternModeSolidColor, 1 },

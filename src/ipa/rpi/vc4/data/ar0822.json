@@ -5,38 +5,7 @@
         {
             "rpi.black_level":
             {
-                "black_level": 3840
-            }
-        },
-        {
-            "rpi.dpc": { }
-        },
-        {
-            "rpi.lux":
-            {
-                "reference_shutter_speed": 6813,
-                "reference_gain": 1.0,
-                "reference_aperture": 1.0,
-                "reference_lux": 890,
-                "reference_Y": 12900
-            }
-        },
-        {
-            "rpi.noise":
-            {
-                "reference_constant": 0,
-                "reference_slope": 2.67
-            }
-        },
-        {
-            "rpi.geq":
-            {
-                "offset": 187,
-                "slope": 0.00842
-            }
-        },
-        {
-            "rpi.sdn": { }
+                "black_level": 2688
             }
         },
         {

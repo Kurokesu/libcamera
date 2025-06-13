@@ -7,22 +7,23 @@
 
 #include <assert.h>
 #include <cmath>
+#include <stdlib.h>
+
+#include <libcamera/base/log.h>
 
 #include "cam_helper.h"
 #include "md_parser.h"
 
 using namespace RPiController;
+using namespace libcamera;
 
-// #define TEMPERATURE_MASK 0x3FF
-// #define TEMPERATURE_SLOPE 0.7
-// #define TEMPERATURE_CALIBRATION 55.0
+namespace libcamera {
+LOG_DECLARE_CATEGORY(IPARPI)
+}
 
-// #define REG_EXPOSURE 0x3012
-// #define REG_ANALOG_GAIN 0x3060
-// #define REG_FRAME_LENGTH 0x300A
-// #define REG_LINE_LENGTH_PCK 0x300C
-// #define REG_TEMPSENS 0x30B2
-// #define REG_TEMPSENS_CALIB1 0x30C6 // Contains temperature reading value at 55°C
+#define TEMPERATURE_MASK 0x3FF
+#define TEMPERATURE_SLOPE 0.71
+#define TEMPERATURE_CALIBRATION 60.0
 
 #define REG_EXPOSURE 0x3012
 #define REG_ANALOG_GAIN 0x5900
@@ -55,8 +56,8 @@ private:
 	 */
 	static constexpr int frameIntegrationDiff = 4;
 
-	// void populateMetadata(const MdParser::RegisterMap &registers,
-	// 		      Metadata &metadata) const override;
+	void populateMetadata(const MdParser::RegisterMap &registers,
+			      Metadata &metadata) const override;
 };
 
 CamHelperAr0822::CamHelperAr0822()
@@ -81,21 +82,29 @@ bool CamHelperAr0822::sensorEmbeddedDataPresent() const
 	return true;
 }
 
-// void CamHelperAr0822::populateMetadata(const MdParser::RegisterMap &registers,
-// 				       Metadata &metadata) const
-// {
-// 	DeviceStatus deviceStatus;
+void CamHelperAr0822::populateMetadata(const MdParser::RegisterMap &registers,
+				       Metadata &metadata) const
+{
+	DeviceStatus deviceStatus;
 
-// 	deviceStatus.lineLength = 4.0 * lineLengthPckToDuration(registers.at(REG_LINE_LENGTH_PCK));
-// 	deviceStatus.exposureTime = exposure(registers.at(REG_EXPOSURE),
-// 					     deviceStatus.lineLength);
-// 	deviceStatus.analogueGain = gain(registers.at(REG_ANALOG_GAIN));
-// 	deviceStatus.frameLength = registers.at(REG_FRAME_LENGTH);
-// 	deviceStatus.sensorTemperature = TEMPERATURE_SLOPE * (int(registers.at(REG_TEMPSENS) & TEMPERATURE_MASK) 
-// 		- int(registers.at(REG_TEMPSENS_CALIB1) & TEMPERATURE_MASK)) + TEMPERATURE_CALIBRATION;
+	LOG(IPARPI, Debug) << "raw gain " << registers.at(REG_ANALOG_GAIN);
+	LOG(IPARPI, Debug) << "raw exposure " << registers.at(REG_EXPOSURE);
+	LOG(IPARPI, Debug) << "raw frame length " << registers.at(REG_FRAME_LENGTH);
+	LOG(IPARPI, Debug) << "raw line length " << registers.at(REG_LINE_LENGTH_PCK);
+	LOG(IPARPI, Debug) << "raw sensor temperature " << registers.at(REG_TEMPSENS);
+	// LOG(IPARPI, Debug) << "raw sensor cal temperature " << registers.at(REG_TEMPSENS_CALIB1);
 
-// 	metadata.set("device.status", deviceStatus);
-// }
+	deviceStatus.lineLength = lineLengthPckToDuration(registers.at(REG_LINE_LENGTH_PCK));
+	deviceStatus.exposureTime = exposure(registers.at(REG_EXPOSURE),
+				     deviceStatus.lineLength);
+	deviceStatus.analogueGain = gain(registers.at(REG_ANALOG_GAIN));
+	deviceStatus.frameLength = registers.at(REG_FRAME_LENGTH);
+	deviceStatus.sensorTemperature = TEMPERATURE_SLOPE * (int(registers.at(REG_TEMPSENS) & TEMPERATURE_MASK) - 468) + TEMPERATURE_CALIBRATION;
+
+	LOG(IPARPI, Debug) << "device status" << deviceStatus;
+
+	metadata.set("device.status", deviceStatus);
+}
 
 static CamHelper *create()
 {

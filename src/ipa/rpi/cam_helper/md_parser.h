@@ -161,11 +161,17 @@ public:
 			       RegisterMap &registers) override;
 
 private:
-	std::initializer_list<uint16_t> const *registerList_;
-	MdParser::Status verifyBuffer(libcamera::Span<const uint8_t> buffer);
-	MdParser::Status verifyData(libcamera::Span<const uint8_t> buffer, unsigned int offset);
-	uint8_t dataWithoutPadding(libcamera::Span<const uint8_t> buffer, unsigned int offset);
-	MdParser::Status extractRegisterValue(libcamera::Span<const uint8_t> buffer, uint16_t registerAddress, uint16_t *registerValue);
+	using OffsetMap = std::map<uint16_t, std::optional<uint16_t>>;
+	OffsetMap offsets_;
+	uint8_t paddingInterval_;
+
+	MdParser::Status findRegs(libcamera::Span<const uint8_t> buffer);
+
+	MdParser::Status getValue(libcamera::Span<const uint8_t> buffer,
+				  uint16_t index, uint16_t *value, uint8_t tag0, uint8_t tag1);
+
+	uint8_t dataWithoutPadding(libcamera::Span<const uint8_t> buffer,
+				   uint16_t offset);
 };
 
 } // namespace RPiController

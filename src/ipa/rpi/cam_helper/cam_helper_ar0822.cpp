@@ -24,8 +24,21 @@ using namespace RPiController;
 // #define REG_TEMPSENS 0x30B2
 // #define REG_TEMPSENS_CALIB1 0x30C6 // Contains temperature reading value at 55°C
 
-// constexpr std::initializer_list<uint16_t> registerList = { REG_EXPOSURE, REG_ANALOG_GAIN, REG_FRAME_LENGTH,
-// 							   REG_LINE_LENGTH_PCK, REG_TEMPSENS, REG_TEMPSENS_CALIB1 };
+#define REG_EXPOSURE 0x3012
+#define REG_ANALOG_GAIN 0x5900
+#define REG_FRAME_LENGTH 0x300A
+#define REG_LINE_LENGTH_PCK 0x300C
+#define REG_TEMPSENS 0x30B2
+#define REG_TEMPSENS_CALIB1 0x30C6 // Contains temperature reading value at 60°C
+
+constexpr std::initializer_list<uint16_t> registerList = {
+	REG_EXPOSURE,
+	REG_ANALOG_GAIN,
+	REG_FRAME_LENGTH,
+	REG_LINE_LENGTH_PCK,
+	REG_TEMPSENS,
+	// REG_TEMPSENS_CALIB1, For some reason this register is not reported
+};
 
 class CamHelperAr0822 : public CamHelper
 {
@@ -49,9 +62,9 @@ private:
 };
 
 CamHelperAr0822::CamHelperAr0822()
-	// : CamHelper(std::make_unique<MdParserOnSemi>(&registerList), frameIntegrationDiff)
-	: CamHelper({}, frameIntegrationDiff)
+	: CamHelper(std::make_unique<MdParserOnSemi>(&registerList), frameIntegrationDiff)
 {
+	parser_->setNumLines(4);
 }
 
 uint32_t CamHelperAr0822::gainCode(double gain) const

@@ -152,4 +152,26 @@ private:
 	OffsetMap offsets_;
 };
 
-} /* namespace RPi */
+class MdParserOnSemi final : public MdParser
+{
+public:
+	MdParserOnSemi(std::initializer_list<uint16_t> const *registerList);
+
+	MdParser::Status parse(libcamera::Span<const uint8_t> buffer,
+			       RegisterMap &registers) override;
+
+private:
+	using OffsetMap = std::map<uint16_t, std::optional<uint16_t>>;
+	OffsetMap offsets_;
+	uint8_t paddingInterval_;
+
+	MdParser::Status findRegs(libcamera::Span<const uint8_t> buffer);
+
+	MdParser::Status getValue(libcamera::Span<const uint8_t> buffer,
+				  uint16_t index, uint16_t *value, uint8_t tag0, uint8_t tag1);
+
+	uint8_t dataWithoutPadding(libcamera::Span<const uint8_t> buffer,
+				   uint16_t offset);
+};
+
+} // namespace RPiController

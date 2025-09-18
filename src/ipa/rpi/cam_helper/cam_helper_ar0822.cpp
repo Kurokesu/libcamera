@@ -46,9 +46,7 @@ public:
 	CamHelperAr0822();
 	uint32_t gainCode(double gain) const override;
 	double gain(uint32_t gainCode) const override;
-	unsigned int hideFramesStartup() const override;
-	unsigned int hideFramesModeSwitch() const override;
-	// bool sensorEmbeddedDataPresent() const override;
+	bool sensorEmbeddedDataPresent() const override;
 
 private:
 	/*
@@ -78,22 +76,10 @@ double CamHelperAr0822::gain(uint32_t gainCode) const
 	return std::pow(10, gainCode * 0.375 / 20.0);
 }
 
-unsigned int CamHelperAr0822::hideFramesStartup() const
+bool CamHelperAr0822::sensorEmbeddedDataPresent() const
 {
-	/* On startup, we seem to get 1 bad frame. */
-	return 1;
+	return true;
 }
-
-unsigned int CamHelperAr0822::hideFramesModeSwitch() const
-{
-	/* After a mode switch, we seem to get 1 bad frame. */
-	return 1;
-}
-
-// bool CamHelperAr0822::sensorEmbeddedDataPresent() const
-// {
-// 	return true;
-// }
 
 // void CamHelperAr0822::populateMetadata(const MdParser::RegisterMap &registers,
 // 				       Metadata &metadata) const

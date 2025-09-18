@@ -66,9 +66,9 @@ MdParser::Status MdParserOnSemi::parse(libcamera::Span<const uint8_t> buffer,
 MdParser::Status MdParserOnSemi::findRegs(libcamera::Span<const uint8_t> buffer)
 {
 	MdParser::Status ret;
-	bool wait_for_line_start, parse = true;
+	bool wait_for_line_start = true, parse = true;
 	uint8_t embedded_line = 0;
-	uint16_t index, current_reg_addr = 0;
+	uint16_t index = 0, current_reg_addr = 0;
 	uint16_t index_amount = buffer.size() - (buffer.size() / (paddingInterval_ + 1));
 	OffsetMap::iterator it = offsets_.begin();
 

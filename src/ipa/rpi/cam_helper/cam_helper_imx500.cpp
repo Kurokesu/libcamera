@@ -56,7 +56,7 @@ public:
 	uint32_t gainCode(double gain) const override;
 	double gain(uint32_t gainCode) const override;
 	void prepare(libcamera::Span<const uint8_t> buffer, Metadata &metadata) override;
-	std::pair<uint32_t, uint32_t> getBlanking(Duration &exposure, Duration minFrameDuration,
+	std::pair<uint32_t, int32_t> getBlanking(Duration &exposure, Duration minFrameDuration,
 						  Duration maxFrameDuration) const override;
 	bool sensorEmbeddedDataPresent() const override;
 
@@ -131,7 +131,7 @@ void CamHelperImx500::prepare(libcamera::Span<const uint8_t> buffer, Metadata &m
 	parseInferenceData(buffer, metadata);
 }
 
-std::pair<uint32_t, uint32_t> CamHelperImx500::getBlanking(Duration &exposure,
+std::pair<uint32_t, int32_t> CamHelperImx500::getBlanking(Duration &exposure,
 							   Duration minFrameDuration,
 							   Duration maxFrameDuration) const
 {

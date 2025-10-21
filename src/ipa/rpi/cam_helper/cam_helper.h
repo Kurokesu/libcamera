@@ -79,11 +79,11 @@ public:
 				       const libcamera::utils::Duration lineLength) const;
 	virtual libcamera::utils::Duration exposure(uint32_t exposureLines,
 						    const libcamera::utils::Duration lineLength) const;
-	virtual std::pair<uint32_t, uint32_t> getBlanking(libcamera::utils::Duration &exposure,
+	virtual std::pair<uint32_t, int32_t> getBlanking(libcamera::utils::Duration &exposure,
 							  libcamera::utils::Duration minFrameDuration,
 							  libcamera::utils::Duration maxFrameDuration) const;
-	libcamera::utils::Duration hblankToLineLength(uint32_t hblank) const;
-	uint32_t lineLengthToHblank(const libcamera::utils::Duration &duration) const;
+	libcamera::utils::Duration hblankToLineLength(int32_t hblank) const;
+	int32_t lineLengthToHblank(const libcamera::utils::Duration &duration) const;
 	libcamera::utils::Duration lineLengthPckToDuration(uint32_t lineLengthPck) const;
 	virtual uint32_t gainCode(double gain) const = 0;
 	virtual double gain(uint32_t gainCode) const = 0;

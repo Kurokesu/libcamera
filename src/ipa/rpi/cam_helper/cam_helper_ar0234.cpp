@@ -154,7 +154,7 @@ void CamHelperAr0234::populateMetadata(const MdParser::RegisterMap &registers,
 {
 	DeviceStatus deviceStatus;
 
-	deviceStatus.lineLength = 4.0 * lineLengthPckToDuration(registers.at(REG_LINE_LENGTH_PCK));
+	deviceStatus.lineLength = lineLengthPckToDuration(registers.at(REG_LINE_LENGTH_PCK));
 	deviceStatus.exposureTime = exposure(registers.at(REG_EXPOSURE),
 					     deviceStatus.lineLength);
 	deviceStatus.analogueGain = gain(registers.at(REG_ANALOG_GAIN));

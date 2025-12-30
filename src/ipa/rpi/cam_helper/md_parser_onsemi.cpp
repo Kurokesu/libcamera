@@ -31,9 +31,10 @@ MdParser::Status MdParserOnSemi::parse(libcamera::Span<const uint8_t> buffer,
 	MdParser::Status ret;
 
 	if (reset_) {
-		ASSERT((bitsPerPixel_ == 10) || (bitsPerPixel_ == 12));
+		ASSERT((bitsPerPixel_ == 8) || (bitsPerPixel_ == 10) || (bitsPerPixel_ == 12));
 
-		paddingInterval_ = (uint8_t)(8 / (bitsPerPixel_ - 8));
+		if (bitsPerPixel_ > 8)
+			paddingInterval_ = (uint8_t)(8 / (bitsPerPixel_ - 8));
 
 		ret = findRegs(buffer);
 		if (ret != MdParser::Status::OK)
@@ -69,8 +70,11 @@ MdParser::Status MdParserOnSemi::findRegs(libcamera::Span<const uint8_t> buffer)
 	bool wait_for_line_start = true, parse = true;
 	uint8_t embedded_line = 0;
 	uint16_t index = 0, current_reg_addr = 0;
-	uint16_t index_amount = buffer.size() - (buffer.size() / (paddingInterval_ + 1));
+	uint16_t index_amount = buffer.size();
 	OffsetMap::iterator it = offsets_.begin();
+
+	if (paddingInterval_ > 0)
+		index_amount -= buffer.size() / (paddingInterval_ + 1);
 
 	while ((index < index_amount) && (it != offsets_.end()) && parse) {
 		uint8_t tag = dataWithoutPadding(buffer, index);
@@ -146,7 +150,9 @@ MdParser::Status MdParserOnSemi::getValue(libcamera::Span<const uint8_t> buffer,
 uint8_t MdParserOnSemi::dataWithoutPadding(libcamera::Span<const uint8_t> buffer,
 					   uint16_t offset)
 {
-	offset += offset / paddingInterval_;
+	if (paddingInterval_ > 0)
+		offset += offset / paddingInterval_;
+
 	ASSERT(offset < buffer.size());
 
 	return buffer[offset];

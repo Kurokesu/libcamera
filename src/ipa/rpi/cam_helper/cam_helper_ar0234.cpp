@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (C) 2021, Raspberry Pi Ltd
+ * Copyright (C) 2025-2026, UAB Kurokesu
  *
- * cam_helper_Ar0234.cpp - camera information for Ar0234 sensor
+ * camera helper for ar0234 sensor
  */
 
 #include <assert.h>

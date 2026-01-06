@@ -56,81 +56,66 @@ CamHelperAr0234::CamHelperAr0234()
 
 uint32_t CamHelperAr0234::gainCode(double gain) const
 {
-	/* The recommended minimum gain is 1.6842 to avoid artifacts. */
-	gain = std::clamp(gain, 1.0 / (1.0 - 13.0 / 32.0), 18.45);
+	/*
+	 * The analogue gain register (0x3060) has a coarse exponential gain in
+	 * the range [2^0, 2^4] and a fine inversely linear gain.
+	 *
+	 * s = R0x3060[6:4], t = R0x3060[3:0]
+	 * coarse gain = 2^s
+	 * fine gain =
+	 *   - s = 0 or 2: 1 / (1 - (t / 32))
+	 *   - s = 1 or 3: 1 / (1 - (INT(t / 2) / 16))
+	 *   - s = 4:      1 / (1 - (INT(t / 4) / 8))
+	 * total gain = coarse_gain * fine_gain
+	 *
+	 * The recommended minimum gain is 1.68421 to avoid artifacts. The
+	 * recommended gain table tops out at 16.0 (0x0040), so we clamp to 16.0
+	 * which in practice means s=4 always uses t=0.
+	 */
+	gain = std::clamp(gain, 1.0 / (1.0 - 13.0 / 32.0), 16.0);
+	uint8_t regCoarse = std::log2(gain);
+	uint8_t regFine = 0;
 
 	/*
-		* The analogue gain is made of a coarse exponential gain in
-		* the range [2^0, 2^4] and a fine inversely linear gain in the
-		* range [1.0, 2.0[. There is an additional fixed 1.153125
-		* multiplier when the coarse gain reaches 2^2.
-		*/
+	 * Invert the gain model.
+	 *
+	 * We intentionally truncate toward 0 when converting to uint8_t, which
+	 * matches the "INT(...)" behaviour described in the developer guide for
+	 * s=1 and s=3 (INT(t/2)). For s=0 and s=2 this produces a valid 4-bit
+	 * fine value in the range [0, 15]. For s=4 we keep t=0 as we clamp the
+	 * gain to <= 16.0.
+	 */
+	if ((regCoarse == 0) || (regCoarse == 2)) {
+		double gainCoarse = (1 << regCoarse); /* 2^s */
+		regFine = static_cast<uint8_t>((1.0 - (gainCoarse / gain)) * 32.0);
+	} else if ((regCoarse == 1) || (regCoarse == 3)) {
+		double gainCoarse = (1 << regCoarse); /* 2^s */
+		regFine = 2 * static_cast<uint8_t>((1.0 - (gainCoarse / gain)) * 16.0);
+	}
 
-	if (gain > 4.0)
-		gain /= 1.153125;
-
-	unsigned int coarse = std::log2(gain);
-	unsigned int fine = (1 - (1 << coarse) / gain) * 32;
-
-	/* The fine gain rounding depends on the coarse gain. */
-	if (coarse == 1 || coarse == 3)
-		fine &= ~1;
-	else if (coarse == 4)
-		fine &= ~3;
-
-	return (coarse << 4) | (fine & 0xf);
+	return (regCoarse << 4) | (regFine & 0xF);
 }
 
 double CamHelperAr0234::gain(uint32_t gainCode) const
 {
-	unsigned int coarse = (gainCode >> 4) & 0x7;
-	unsigned int fine = gainCode & 0xf;
-	unsigned int d1;
-	double d2, m;
-
-	switch (coarse) {
-	default:
-	case 0:
-		d1 = 1;
-		d2 = 32.0;
-		m = 1.0;
-		break;
-	case 1:
-		d1 = 2;
-		d2 = 16.0;
-		m = 1.0;
-		break;
-	case 2:
-		d1 = 1;
-		d2 = 32.0;
-		m = 1.153125;
-		break;
-	case 3:
-		d1 = 2;
-		d2 = 16.0;
-		m = 1.153125;
-		break;
-	case 4:
-		d1 = 4;
-		d2 = 8.0;
-		m = 1.153125;
-		break;
-	}
+	const uint8_t regCoarse = (gainCode >> 4) & 0x7; /* s */
+	const uint8_t regFine = gainCode & 0xF; /* t */
+	const double gainCoarse = static_cast<double>(1 << regCoarse); /* 2^s */
+	double gainFine = 1.0;
 
 	/*
-		* With infinite precision, the calculated gain would be exact,
-		* and the reverse conversion with gainCode() would produce the
-		* same gain code. In the real world, rounding errors may cause
-		* the calculated gain to be lower by an amount negligible for
-		* all purposes, except for the reverse conversion. Converting
-		* the gain to a gain code could then return the quantized value
-		* just lower than the original gain code. To avoid this, tests
-		* showed that adding the machine epsilon to the multiplier m is
-		* sufficient.
-		*/
-	m += std::numeric_limits<decltype(m)>::epsilon();
+	 * Add epsilon to avoid rounding producing the quantized value just below
+	 * the original gain code when converting back with gainCode().
+	 */
+	const double m = 1.0 + std::numeric_limits<double>::epsilon();
 
-	return m * (1 << coarse) / (1.0 - (fine / d1) / d2);
+	if ((regCoarse == 0) || (regCoarse == 2)) {
+		gainFine = 1 / (1 - (regFine / 32.0));
+	} else if ((regCoarse == 1) || (regCoarse == 3)) {
+		gainFine = 1 / (1 - (static_cast<double>(regFine / 2) / 16.0));
+	}
+
+	return m * gainCoarse * gainFine;
 }
 
 unsigned int CamHelperAr0234::hideFramesStartup() const

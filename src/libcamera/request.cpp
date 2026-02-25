@@ -53,9 +53,11 @@ LOG_DEFINE_CATEGORY(Request)
 /**
  * \brief Create a Request::Private
  * \param camera The Camera that creates the request
+ *
+ * \todo Add a validator for metadata controls.
  */
 Request::Private::Private(Camera *camera)
-	: camera_(camera), cancelled_(false)
+	: camera_(camera), cancelled_(false), metadata_(controls::controls)
 {
 }
 
@@ -81,6 +83,12 @@ bool Request::Private::hasPendingBuffers() const
 {
 	return !pending_.empty();
 }
+
+/**
+ * \fn Request::Private::metadata()
+ * \brief Retrieve the request's metadata
+ * \return The metadata associated with the request
+ */
 
 /**
  * \brief Complete a buffer for the request
@@ -228,15 +236,12 @@ void Request::Private::prepare(std::chrono::milliseconds timeout)
 		if (!fence)
 			continue;
 
-		std::unique_ptr<EventNotifier> notifier =
-			std::make_unique<EventNotifier>(fence->fd().get(),
-							EventNotifier::Read);
+		auto [it, inserted] = notifiers_.try_emplace(buffer, fence->fd().get(), EventNotifier::Type::Read);
+		ASSERT(inserted);
 
-		notifier->activated.connect(this, [this, buffer] {
-							notifierActivated(buffer);
-					    });
-
-		notifiers_[buffer] = std::move(notifier);
+		it->second.activated.connect(this, [this, buffer] {
+			notifierActivated(buffer);
+		});
 	}
 
 	if (notifiers_.empty()) {
@@ -327,6 +332,9 @@ void Request::Private::timeout()
  * Don't reuse buffers
  * \var Request::ReuseBuffers
  * Reuse the buffers that were previously added by addBuffer()
+ *
+ * \note Fences associated with the buffers are not reused.
+ *  This flag should not be used if fences are used.
  */
 
 /**
@@ -354,16 +362,9 @@ void Request::Private::timeout()
  */
 Request::Request(Camera *camera, uint64_t cookie)
 	: Extensible(std::make_unique<Private>(camera)),
+	  controls_(camera->controls(), camera->_d()->validator()),
 	  cookie_(cookie), status_(RequestPending)
 {
-	controls_ = new ControlList(controls::controls,
-				    camera->_d()->validator());
-
-	/**
-	 * \todo Add a validator for metadata controls.
-	 */
-	metadata_ = new ControlList(controls::controls);
-
 	LIBCAMERA_TRACEPOINT(request_construct, this);
 
 	LOG(Request, Debug) << "Created request - cookie: " << cookie_;
@@ -372,9 +373,6 @@ Request::Request(Camera *camera, uint64_t cookie)
 Request::~Request()
 {
 	LIBCAMERA_TRACEPOINT(request_destroy, this);
-
-	delete metadata_;
-	delete controls_;
 }
 
 /**
@@ -405,8 +403,8 @@ void Request::reuse(ReuseFlag flags)
 
 	status_ = RequestPending;
 
-	controls_->clear();
-	metadata_->clear();
+	controls_.clear();
+	_d()->metadata_.clear();
 }
 
 /**
@@ -424,6 +422,15 @@ void Request::reuse(ReuseFlag flags)
  *
  * \return A reference to the ControlList in this request
  */
+
+/**
+ * \brief Retrieve the request's metadata
+ * \return The a const reference to the metadata associated with the request
+ */
+const ControlList &Request::metadata() const
+{
+	return _d()->metadata_;
+}
 
 /**
  * \fn Request::buffers()
@@ -452,7 +459,9 @@ void Request::reuse(ReuseFlag flags)
  *
  * When a valid Fence is provided to this function, \a fence is moved to \a
  * buffer and this Request will only be queued to the device once the
- * fences of all its buffers have been correctly signalled.
+ * fences of all its buffers have been correctly signalled. Ownership of the
+ * fence will only be taken in case of success, otherwise the fence will
+ * be left unmodified.
  *
  * If the \a fence associated with \a buffer isn't signalled, the request will
  * fail after a timeout. The buffer will still contain the fence, which
@@ -468,7 +477,7 @@ void Request::reuse(ReuseFlag flags)
  * \retval -EINVAL The buffer does not reference a valid Stream
  */
 int Request::addBuffer(const Stream *stream, FrameBuffer *buffer,
-		       std::unique_ptr<Fence> fence)
+		       std::unique_ptr<Fence> &&fence)
 {
 	if (!stream) {
 		LOG(Request, Error) << "Invalid stream reference";
@@ -522,14 +531,6 @@ FrameBuffer *Request::findBuffer(const Stream *stream) const
 
 	return it->second;
 }
-
-/**
- * \fn Request::metadata()
- * \brief Retrieve the request's metadata
- * \todo Offer a read-only API towards applications while keeping a read/write
- * API internally.
- * \return The metadata associated with the request
- */
 
 /**
  * \brief Retrieve the sequence number for the request

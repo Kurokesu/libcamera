@@ -187,7 +187,8 @@ std::string time_point_to_string(const time_point &time)
 }
 
 std::basic_ostream<char, std::char_traits<char>> &
-operator<<(std::basic_ostream<char, std::char_traits<char>> &stream, const _hex &h)
+details::operator<<(std::basic_ostream<char, std::char_traits<char>> &stream,
+		    const details::hex &h)
 {
 	stream << "0x";
 
@@ -426,6 +427,12 @@ std::string toAscii(const std::string &str)
  */
 
 /**
+ * \fn Duration::operator-()
+ * \brief Negation operator to negate a \a Duration
+ * \return The duration, with the number of ticks negated
+ */
+
+/**
  * \fn Duration::operator bool()
  * \brief Boolean operator to test if a \a Duration holds a non-zero time value
  *
@@ -648,14 +655,10 @@ void ScopeExitActions::release()
 	actions_.clear();
 }
 
-} /* namespace utils */
-
 #ifndef __DOXYGEN__
-template<class CharT, class Traits>
-std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> &os,
-					      const utils::Duration &d)
+std::ostream &operator<<(std::ostream &os, const Duration &d)
 {
-	std::basic_ostringstream<CharT, Traits> s;
+	std::ostringstream s;
 
 	s.flags(os.flags());
 	s.imbue(os.getloc());
@@ -664,11 +667,8 @@ std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> 
 	s << d.get<std::micro>() << "us";
 	return os << s.str();
 }
-
-template
-std::basic_ostream<char, std::char_traits<char>> &
-operator<< <char, std::char_traits<char>>(std::basic_ostream<char, std::char_traits<char>> &os,
-					  const utils::Duration &d);
 #endif
+
+} /* namespace utils */
 
 } /* namespace libcamera */

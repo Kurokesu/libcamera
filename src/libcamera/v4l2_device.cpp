@@ -162,6 +162,7 @@ void V4L2Device::close()
 /**
  * \brief Read controls from the device
  * \param[in] ids The list of controls to read, specified by their ID
+ * \param[in] request An optional request
  *
  * This function reads the value of all controls contained in \a ids, and
  * returns their values as a ControlList.
@@ -171,10 +172,12 @@ void V4L2Device::close()
  * during validation of the requested controls, no control is read and this
  * function returns an empty control list.
  *
+ * If \a request is specified the controls tied to that request are read.
+ *
  * \return The control values in a ControlList on success, or an empty list on
  * error
  */
-ControlList V4L2Device::getControls(Span<const uint32_t> ids)
+ControlList V4L2Device::getControls(Span<const uint32_t> ids, const V4L2Request *request)
 {
 	if (ids.empty())
 		return {};
@@ -242,9 +245,15 @@ ControlList V4L2Device::getControls(Span<const uint32_t> ids)
 	}
 
 	struct v4l2_ext_controls v4l2ExtCtrls = {};
-	v4l2ExtCtrls.which = V4L2_CTRL_WHICH_CUR_VAL;
 	v4l2ExtCtrls.controls = v4l2Ctrls.data();
 	v4l2ExtCtrls.count = v4l2Ctrls.size();
+
+	if (request) {
+		v4l2ExtCtrls.which = V4L2_CTRL_WHICH_REQUEST_VAL;
+		v4l2ExtCtrls.request_fd = request->fd();
+	} else {
+		v4l2ExtCtrls.which = V4L2_CTRL_WHICH_CUR_VAL;
+	}
 
 	int ret = ioctl(VIDIOC_G_EXT_CTRLS, &v4l2ExtCtrls);
 	if (ret) {
@@ -273,6 +282,7 @@ ControlList V4L2Device::getControls(Span<const uint32_t> ids)
 /**
  * \brief Write controls to the device
  * \param[in] ctrls The list of controls to write
+ * \param[in] request An optional request
  *
  * This function writes the value of all controls contained in \a ctrls, and
  * stores the values actually applied to the device in the corresponding
@@ -288,11 +298,16 @@ ControlList V4L2Device::getControls(Span<const uint32_t> ids)
  * are written and their values are updated in \a ctrls, while all other
  * controls are not written and their values are not changed.
  *
+ * If \a request is set, the controls will be applied to that request. If the
+ * device doesn't support requests, -EACCESS will be returned. If \a request is
+ * invalid, -EINVAL will be returned.
+ *
  * \return 0 on success or an error code otherwise
- * \retval -EINVAL One of the control is not supported or not accessible
+ * \retval -EINVAL One of the controls is not supported or not accessible
+ * \retval -EACCESS The device does not support requests
  * \retval i The index of the control that failed
  */
-int V4L2Device::setControls(ControlList *ctrls)
+int V4L2Device::setControls(ControlList *ctrls, const V4L2Request *request)
 {
 	if (ctrls->empty())
 		return 0;
@@ -377,9 +392,15 @@ int V4L2Device::setControls(ControlList *ctrls)
 	}
 
 	struct v4l2_ext_controls v4l2ExtCtrls = {};
-	v4l2ExtCtrls.which = V4L2_CTRL_WHICH_CUR_VAL;
 	v4l2ExtCtrls.controls = v4l2Ctrls.data();
 	v4l2ExtCtrls.count = v4l2Ctrls.size();
+
+	if (request) {
+		v4l2ExtCtrls.which = V4L2_CTRL_WHICH_REQUEST_VAL;
+		v4l2ExtCtrls.request_fd = request->fd();
+	} else {
+		v4l2ExtCtrls.which = V4L2_CTRL_WHICH_CUR_VAL;
+	}
 
 	int ret = ioctl(VIDIOC_S_EXT_CTRLS, &v4l2ExtCtrls);
 	if (ret) {
@@ -1011,6 +1032,8 @@ template std::optional<ColorSpace> V4L2Device::toColorSpace(const struct v4l2_mb
 template<typename T>
 int V4L2Device::fromColorSpace(const std::optional<ColorSpace> &colorSpace, T &v4l2Format)
 {
+	using libcamera::_log;
+
 	v4l2Format.colorspace = V4L2_COLORSPACE_DEFAULT;
 	v4l2Format.xfer_func = V4L2_XFER_FUNC_DEFAULT;
 	v4l2Format.ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
@@ -1039,7 +1062,7 @@ int V4L2Device::fromColorSpace(const std::optional<ColorSpace> &colorSpace, T &v
 	if (itPrimaries != primariesToV4l2.end()) {
 		v4l2Format.colorspace = itPrimaries->second;
 	} else {
-		libcamera::LOG(V4L2, Warning)
+		LOG(V4L2, Warning)
 			<< "Unrecognised primaries in "
 			<< ColorSpace::toString(colorSpace);
 		ret = -EINVAL;
@@ -1049,7 +1072,7 @@ int V4L2Device::fromColorSpace(const std::optional<ColorSpace> &colorSpace, T &v
 	if (itTransfer != transferFunctionToV4l2.end()) {
 		v4l2Format.xfer_func = itTransfer->second;
 	} else {
-		libcamera::LOG(V4L2, Warning)
+		LOG(V4L2, Warning)
 			<< "Unrecognised transfer function in "
 			<< ColorSpace::toString(colorSpace);
 		ret = -EINVAL;
@@ -1059,7 +1082,7 @@ int V4L2Device::fromColorSpace(const std::optional<ColorSpace> &colorSpace, T &v
 	if (itYcbcrEncoding != ycbcrEncodingToV4l2.end()) {
 		v4l2Format.ycbcr_enc = itYcbcrEncoding->second;
 	} else {
-		libcamera::LOG(V4L2, Warning)
+		LOG(V4L2, Warning)
 			<< "Unrecognised YCbCr encoding in "
 			<< ColorSpace::toString(colorSpace);
 		ret = -EINVAL;
@@ -1069,7 +1092,7 @@ int V4L2Device::fromColorSpace(const std::optional<ColorSpace> &colorSpace, T &v
 	if (itRange != rangeToV4l2.end()) {
 		v4l2Format.quantization = itRange->second;
 	} else {
-		libcamera::LOG(V4L2, Warning)
+		LOG(V4L2, Warning)
 			<< "Unrecognised quantization in "
 			<< ColorSpace::toString(colorSpace);
 		ret = -EINVAL;

@@ -7,6 +7,7 @@
 
 #include "ipa_base.h"
 
+#include <array>
 #include <cmath>
 
 #include <libcamera/base/log.h>
@@ -85,13 +86,18 @@ const ControlInfoMap::Map ipaControls{
 	{ &controls::Sharpness, ControlInfo(0.0f, 16.0f, 1.0f) },
 	{ &controls::ScalerCrop, ControlInfo(Rectangle{}, Rectangle(65535, 65535, 65535, 65535), Rectangle{}) },
 	{ &controls::FrameDurationLimits,
-	  ControlInfo(INT64_C(33333), INT64_C(120000),
-		      static_cast<int64_t>(defaultMinFrameDuration.get<std::micro>())) },
-	{ &controls::rpi::SyncMode, ControlInfo(controls::rpi::SyncModeValues) },
-	{ &controls::rpi::SyncFrames, ControlInfo(1, 1000000, 100) },
+	  ControlInfo(static_cast<int64_t>(defaultMinFrameDuration.get<std::micro>()),
+		      static_cast<int64_t>(defaultMaxFrameDuration.get<std::micro>()),
+		      Span<const int64_t, 2>{ { static_cast<int64_t>(defaultMinFrameDuration.get<std::micro>()),
+						static_cast<int64_t>(defaultMinFrameDuration.get<std::micro>()) } }) },
 	{ &controls::draft::NoiseReductionMode, ControlInfo(controls::draft::NoiseReductionModeValues) },
 	{ &controls::rpi::StatsOutputEnable, ControlInfo(false, true, false) },
 	{ &controls::rpi::CnnEnableInputTensor, ControlInfo(false, true, false) },
+	{ &controls::rpi::SyncMode,
+	  ControlInfo({ { ControlValue(controls::rpi::SyncModeOff),
+			  ControlValue(controls::rpi::SyncModeClient) } },
+		      ControlValue(controls::rpi::SyncModeOff)) },
+	{ &controls::rpi::SyncFrames, ControlInfo(100, 100000, 1000) },
 };
 
 /* IPA controls handled conditionally, if the sensor is not mono */
@@ -110,7 +116,8 @@ const ControlInfoMap::Map ipaAfControls{
 	{ &controls::AfRange, ControlInfo(controls::AfRangeValues) },
 	{ &controls::AfSpeed, ControlInfo(controls::AfSpeedValues) },
 	{ &controls::AfMetering, ControlInfo(controls::AfMeteringValues) },
-	{ &controls::AfWindows, ControlInfo(Rectangle{}, Rectangle(65535, 65535, 65535, 65535), Rectangle{}) },
+	{ &controls::AfWindows, ControlInfo(Rectangle{}, Rectangle(65535, 65535, 65535, 65535),
+					    Span<const Rectangle, 1>{ { Rectangle{} } }) },
 	{ &controls::AfTrigger, ControlInfo(controls::AfTriggerValues) },
 	{ &controls::AfPause, ControlInfo(controls::AfPauseValues) },
 	{ &controls::LensPosition, ControlInfo(0.0f, 32.0f, 1.0f) }
@@ -251,7 +258,8 @@ int32_t IpaBase::configure(const IPACameraSensorInfo &sensorInfo, const ConfigPa
 	ctrlMap[&controls::FrameDurationLimits] =
 		ControlInfo(static_cast<int64_t>(mode_.minFrameDuration.get<std::micro>()),
 			    static_cast<int64_t>(mode_.maxFrameDuration.get<std::micro>()),
-			    static_cast<int64_t>(defaultMinFrameDuration.get<std::micro>()));
+			    Span<const int64_t, 2>{ { static_cast<int64_t>(defaultMinFrameDuration.get<std::micro>()),
+						      static_cast<int64_t>(defaultMinFrameDuration.get<std::micro>()) } });
 
 	ctrlMap[&controls::AnalogueGain] =
 		ControlInfo(static_cast<float>(mode_.minAnalogueGain),
@@ -619,7 +627,7 @@ void IpaBase::setMode(const IPACameraSensorInfo &sensorInfo)
 			mode_.minLineLength = adjustedLineLength;
 		} else {
 			LOG(IPARPI, Error)
-				<< "Sensor minimum line length of " << pixelTime * mode_.width
+				<< "Sensor minimum line length of " << Duration(pixelTime * mode_.width)
 				<< " (" << 1us / pixelTime << " MPix/s)"
 				<< " is below the minimum allowable ISP limit of "
 				<< adjustedLineLength
@@ -1046,13 +1054,6 @@ void IpaBase::applyControls(const ControlList &controls)
 					<< "Could not set AE_EXPOSURE_MODE - no AGC algorithm";
 				break;
 			}
-
-			/*
-			 * Ignore AE_EXPOSURE_MODE if the shutter or the gain
-			 * are in auto mode.
-			 */
-			if (agc->autoExposureEnabled() || agc->autoGainEnabled())
-				break;
 
 			int32_t idx = ctrl.second.get<int32_t>();
 			if (ExposureModeTable.count(idx)) {

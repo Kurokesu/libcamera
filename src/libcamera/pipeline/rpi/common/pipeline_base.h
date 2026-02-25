@@ -15,7 +15,6 @@
 #include <vector>
 
 #include <libcamera/controls.h>
-#include <libcamera/request.h>
 
 #include "libcamera/internal/bayer_format.h"
 #include "libcamera/internal/camera.h"
@@ -25,6 +24,7 @@
 #include "libcamera/internal/media_device.h"
 #include "libcamera/internal/media_object.h"
 #include "libcamera/internal/pipeline_handler.h"
+#include "libcamera/internal/request.h"
 #include "libcamera/internal/v4l2_videodevice.h"
 #include "libcamera/internal/yaml_parser.h"
 
@@ -224,13 +224,16 @@ public:
 
 protected:
 	int registerCamera(std::unique_ptr<RPi::CameraData> &cameraData,
-			   MediaDevice *frontent, const std::string &frontendName,
-			   MediaDevice *backend, MediaEntity *sensorEntity);
+			   std::shared_ptr<MediaDevice> frontend,
+			   const std::string &frontendName,
+			   std::shared_ptr<MediaDevice> backend,
+			   MediaEntity *sensorEntity);
 
 	void mapBuffers(Camera *camera, const BufferMap &buffers, unsigned int mask);
 
 	virtual int platformRegister(std::unique_ptr<CameraData> &cameraData,
-				     MediaDevice *unicam, MediaDevice *isp) = 0;
+				     std::shared_ptr<MediaDevice> unicam,
+				     std::shared_ptr<MediaDevice> isp) = 0;
 
 private:
 	CameraData *cameraData(Camera *camera)
@@ -239,7 +242,7 @@ private:
 	}
 
 	int queueAllBuffers(Camera *camera);
-	virtual int prepareBuffers(Camera *camera) = 0;
+	virtual int allocateBuffers(Camera *camera) = 0;
 };
 
 class RPiCameraConfiguration final : public CameraConfiguration

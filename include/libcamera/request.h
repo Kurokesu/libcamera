@@ -49,11 +49,11 @@ public:
 
 	void reuse(ReuseFlag flags = Default);
 
-	ControlList &controls() { return *controls_; }
-	ControlList &metadata() { return *metadata_; }
+	ControlList &controls() { return controls_; }
+	const ControlList &metadata() const;
 	const BufferMap &buffers() const { return bufferMap_; }
 	int addBuffer(const Stream *stream, FrameBuffer *buffer,
-		      std::unique_ptr<Fence> fence = nullptr);
+		      std::unique_ptr<Fence> &&fence = {});
 	FrameBuffer *findBuffer(const Stream *stream) const;
 
 	uint32_t sequence() const;
@@ -67,8 +67,7 @@ public:
 private:
 	LIBCAMERA_DISABLE_COPY(Request)
 
-	ControlList *controls_;
-	ControlList *metadata_;
+	ControlList controls_;
 	BufferMap bufferMap_;
 
 	const uint64_t cookie_;

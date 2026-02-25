@@ -24,13 +24,13 @@
 #include <libcamera/control_ids.h>
 #include <libcamera/controls.h>
 #include <libcamera/property_ids.h>
-#include <libcamera/request.h>
 #include <libcamera/stream.h>
 
 #include "libcamera/internal/camera.h"
 #include "libcamera/internal/device_enumerator.h"
 #include "libcamera/internal/media_device.h"
 #include "libcamera/internal/pipeline_handler.h"
+#include "libcamera/internal/request.h"
 #include "libcamera/internal/sysfs.h"
 #include "libcamera/internal/v4l2_videodevice.h"
 
@@ -46,7 +46,7 @@ public:
 	{
 	}
 
-	int init(MediaDevice *media);
+	int init(std::shared_ptr<MediaDevice> media);
 	void addControl(uint32_t cid, const ControlInfo &v4l2info,
 			ControlInfoMap::Map *ctrls);
 	void imageBufferReady(FrameBuffer *buffer);
@@ -141,6 +141,9 @@ CameraConfiguration::Status UVCCameraConfiguration::validate()
 	Status status = Valid;
 
 	if (config_.empty())
+		return Invalid;
+
+	if (sensorConfig)
 		return Invalid;
 
 	if (orientation != Orientation::Rotate0) {
@@ -466,7 +469,7 @@ int PipelineHandlerUVC::queueRequestDevice(Camera *camera, Request *request)
 
 bool PipelineHandlerUVC::match(DeviceEnumerator *enumerator)
 {
-	MediaDevice *media;
+	std::shared_ptr<MediaDevice> media;
 	DeviceMatch dm("uvcvideo");
 
 	media = acquireMediaDevice(enumerator, dm);
@@ -508,7 +511,7 @@ void PipelineHandlerUVC::releaseDevice(Camera *camera)
 	data->video_->close();
 }
 
-int UVCCameraData::init(MediaDevice *media)
+int UVCCameraData::init(std::shared_ptr<MediaDevice> media)
 {
 	int ret;
 
@@ -892,8 +895,8 @@ void UVCCameraData::imageBufferReady(FrameBuffer *buffer)
 	Request *request = buffer->request();
 
 	/* \todo Use the UVC metadata to calculate a more precise timestamp */
-	request->metadata().set(controls::SensorTimestamp,
-				buffer->metadata().timestamp);
+	request->_d()->metadata().set(controls::SensorTimestamp,
+				      buffer->metadata().timestamp);
 
 	pipe()->completeBuffer(request, buffer);
 	pipe()->completeRequest(request);

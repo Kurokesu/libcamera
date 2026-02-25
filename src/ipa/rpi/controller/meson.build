@@ -10,10 +10,12 @@ rpi_ipa_controller_sources = files([
     'rpi/agc_channel.cpp',
     'rpi/alsc.cpp',
     'rpi/awb.cpp',
+    'rpi/awb_bayes.cpp',
     'rpi/black_level.cpp',
     'rpi/cac.cpp',
     'rpi/ccm.cpp',
     'rpi/contrast.cpp',
+    'rpi/decompand.cpp',
     'rpi/denoise.cpp',
     'rpi/dpc.cpp',
     'rpi/geq.cpp',
@@ -30,6 +32,15 @@ rpi_ipa_controller_sources = files([
 rpi_ipa_controller_deps = [
     libcamera_private,
 ]
+
+tflite_dep = dependency('tensorflow-lite', required : get_option('rpi-awb-nn'))
+
+if tflite_dep.found()
+    rpi_ipa_controller_sources += files([
+        'rpi/awb_nn.cpp',
+    ])
+    rpi_ipa_controller_deps += tflite_dep
+endif
 
 rpi_ipa_controller_lib = static_library('rpi_ipa_controller', rpi_ipa_controller_sources,
                                         include_directories : libipa_includes,

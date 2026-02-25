@@ -77,69 +77,29 @@ using time_point = std::chrono::steady_clock::time_point;
 struct timespec duration_to_timespec(const duration &value);
 std::string time_point_to_string(const time_point &time);
 
-#ifndef __DOXYGEN__
-struct _hex {
+namespace details {
+
+struct hex {
 	uint64_t v;
 	unsigned int w;
 };
 
+template<typename T>
+constexpr unsigned int hex_width()
+{
+	return sizeof(T) * 2;
+}
+
 std::basic_ostream<char, std::char_traits<char>> &
-operator<<(std::basic_ostream<char, std::char_traits<char>> &stream, const _hex &h);
-#endif
+operator<<(std::basic_ostream<char, std::char_traits<char>> &stream, const hex &h);
 
-template<typename T,
-	 std::enable_if_t<std::is_integral<T>::value> * = nullptr>
-_hex hex(T value, unsigned int width = 0);
+} /* namespace details */
 
-#ifndef __DOXYGEN__
-template<>
-inline _hex hex<int8_t>(int8_t value, unsigned int width)
+template<typename T, std::enable_if_t<std::is_integral_v<T>> * = nullptr>
+details::hex hex(T value, unsigned int width = details::hex_width<T>())
 {
-	return { static_cast<uint64_t>(value), width ? width : 2 };
+	return { static_cast<std::make_unsigned_t<T>>(value), width };
 }
-
-template<>
-inline _hex hex<uint8_t>(uint8_t value, unsigned int width)
-{
-	return { static_cast<uint64_t>(value), width ? width : 2 };
-}
-
-template<>
-inline _hex hex<int16_t>(int16_t value, unsigned int width)
-{
-	return { static_cast<uint64_t>(value), width ? width : 4 };
-}
-
-template<>
-inline _hex hex<uint16_t>(uint16_t value, unsigned int width)
-{
-	return { static_cast<uint64_t>(value), width ? width : 4 };
-}
-
-template<>
-inline _hex hex<int32_t>(int32_t value, unsigned int width)
-{
-	return { static_cast<uint64_t>(value), width ? width : 8 };
-}
-
-template<>
-inline _hex hex<uint32_t>(uint32_t value, unsigned int width)
-{
-	return { static_cast<uint64_t>(value), width ? width : 8 };
-}
-
-template<>
-inline _hex hex<int64_t>(int64_t value, unsigned int width)
-{
-	return { static_cast<uint64_t>(value), width ? width : 16 };
-}
-
-template<>
-inline _hex hex<uint64_t>(uint64_t value, unsigned int width)
-{
-	return { static_cast<uint64_t>(value), width ? width : 16 };
-}
-#endif
 
 size_t strlcpy(char *dst, const char *src, size_t size);
 
@@ -150,8 +110,7 @@ std::string join(const Container &items, const std::string &sep, UnaryOp op)
 	std::ostringstream ss;
 	bool first = true;
 
-	for (typename Container::const_iterator it = std::begin(items);
-	     it != std::end(items); ++it) {
+	for (auto it = std::begin(items); it != std::end(items); ++it) {
 		if (!first)
 			ss << sep;
 		else
@@ -169,8 +128,7 @@ std::string join(const Container &items, const std::string &sep)
 	std::ostringstream ss;
 	bool first = true;
 
-	for (typename Container::const_iterator it = std::begin(items);
-	     it != std::end(items); ++it) {
+	for (auto it = std::begin(items); it != std::end(items); ++it) {
 		if (!first)
 			ss << sep;
 		else
@@ -355,18 +313,10 @@ private:
 } /* namespace details */
 
 template<typename T>
-auto enumerate(T &iterable) -> details::enumerate_adapter<decltype(iterable.begin())>
+auto enumerate(T &iterable)
 {
-	return { std::begin(iterable), std::end(iterable) };
+	return details::enumerate_adapter{ std::begin(iterable), std::end(iterable) };
 }
-
-#ifndef __DOXYGEN__
-template<typename T, size_t N>
-auto enumerate(T (&iterable)[N]) -> details::enumerate_adapter<T *>
-{
-	return { std::begin(iterable), std::end(iterable) };
-}
-#endif
 
 class Duration : public std::chrono::duration<double, std::nano>
 {
@@ -392,6 +342,11 @@ public:
 	{
 		auto const c = std::chrono::duration_cast<std::chrono::duration<double, Period>>(*this);
 		return c.count();
+	}
+
+	constexpr Duration operator-() const
+	{
+		return BaseDuration::operator-();
 	}
 
 	explicit constexpr operator bool() const
@@ -466,12 +421,10 @@ scope_exit(EF) -> scope_exit<EF>;
 
 #endif /* __DOXYGEN__ */
 
-} /* namespace utils */
-
 #ifndef __DOXYGEN__
-template<class CharT, class Traits>
-std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> &os,
-					      const utils::Duration &d);
+std::ostream &operator<<(std::ostream &os, const Duration &d);
 #endif
+
+} /* namespace utils */
 
 } /* namespace libcamera */

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /*
- * Copyright (C) 2024-2025 Red Hat, Inc.
+ * Copyright (C) 2024-2026 Red Hat, Inc.
  *
  * Simple pipeline IPA Context
  */
@@ -25,10 +25,9 @@ namespace libcamera {
 namespace ipa::soft {
 
 struct IPASessionConfiguration {
-	float gamma;
 	struct {
 		int32_t exposureMin, exposureMax;
-		double againMin, againMax, againMinStep;
+		double againMin, againMax, again10, againMinStep;
 		utils::Duration lineDuration;
 	} agc;
 	struct {
@@ -37,6 +36,12 @@ struct IPASessionConfiguration {
 };
 
 struct IPAActiveState {
+	struct {
+		int32_t exposure;
+		double again;
+		bool valid;
+	} agc;
+
 	struct {
 		uint8_t level;
 		int32_t lastExposure;
@@ -48,29 +53,18 @@ struct IPAActiveState {
 		unsigned int temperatureK;
 	} awb;
 
-	static constexpr unsigned int kGammaLookupSize = 1024;
-	struct {
-		std::array<double, kGammaLookupSize> gammaTable;
-		uint8_t blackLevel;
-		double contrast;
-	} gamma;
+	Matrix<float, 3, 3> combinedMatrix;
 
 	struct {
-		Matrix<float, 3, 3> ccm;
-		bool changed;
-	} ccm;
-
-	struct {
+		float gamma;
 		/* 0..2 range, 1.0 = normal */
-		std::optional<double> contrast;
+		std::optional<float> contrast;
 		std::optional<float> saturation;
 	} knobs;
 };
 
 struct IPAFrameContext : public FrameContext {
-	struct {
-		Matrix<float, 3, 3> ccm;
-	} ccm;
+	Matrix<float, 3, 3> ccm;
 
 	struct {
 		int32_t exposure;
@@ -82,7 +76,8 @@ struct IPAFrameContext : public FrameContext {
 		double blue;
 	} gains;
 
-	std::optional<double> contrast;
+	float gamma;
+	std::optional<float> contrast;
 	std::optional<float> saturation;
 };
 

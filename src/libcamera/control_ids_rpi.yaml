@@ -35,7 +35,7 @@ controls:
   - ScalerCrops:
       type: Rectangle
       size: [n]
-      direction: out
+      direction: inout
       description: |
         An array of rectangles, where each singular value has identical
         functionality to the ScalerCrop control. This control allows the
@@ -218,6 +218,7 @@ controls:
           char networkName[NetworkNameLen];
           uint32_t numTensors;
           OutputTensorInfo info[MaxNumTensors];
+          uint8_t frameCount;
         };
 
         with
@@ -279,6 +280,7 @@ controls:
           uint32_t width;
           uint32_t height;
           uint32_t numChannels;
+          uint8_t frameCount;
         };
 
         where

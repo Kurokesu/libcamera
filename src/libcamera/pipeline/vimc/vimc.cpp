@@ -24,7 +24,6 @@
 #include <libcamera/formats.h>
 #include <libcamera/framebuffer.h>
 #include <libcamera/geometry.h>
-#include <libcamera/request.h>
 #include <libcamera/stream.h>
 
 #include <libcamera/ipa/ipa_interface.h>
@@ -39,6 +38,7 @@
 #include "libcamera/internal/ipa_manager.h"
 #include "libcamera/internal/media_device.h"
 #include "libcamera/internal/pipeline_handler.h"
+#include "libcamera/internal/request.h"
 #include "libcamera/internal/v4l2_subdevice.h"
 #include "libcamera/internal/v4l2_videodevice.h"
 
@@ -49,7 +49,7 @@ LOG_DEFINE_CATEGORY(VIMC)
 class VimcCameraData : public Camera::Private
 {
 public:
-	VimcCameraData(PipelineHandler *pipe, MediaDevice *media)
+	VimcCameraData(PipelineHandler *pipe, std::shared_ptr<MediaDevice> media)
 		: Camera::Private(pipe), media_(media)
 	{
 	}
@@ -59,7 +59,7 @@ public:
 	void imageBufferReady(FrameBuffer *buffer);
 	void paramsComputed(unsigned int id, const Flags<ipa::vimc::TestFlag> flags);
 
-	MediaDevice *media_;
+	std::shared_ptr<MediaDevice> media_;
 	std::unique_ptr<CameraSensor> sensor_;
 	std::unique_ptr<V4L2Subdevice> debayer_;
 	std::unique_ptr<V4L2Subdevice> scaler_;
@@ -363,8 +363,11 @@ int PipelineHandlerVimc::start(Camera *camera, [[maybe_unused]] const ControlLis
 	/* Map the mock IPA buffers to VIMC IPA to exercise IPC code paths. */
 	std::vector<IPABuffer> ipaBuffers;
 	for (auto [i, buffer] : utils::enumerate(data->mockIPABufs_)) {
+		Span<const FrameBuffer::Plane> planes = buffer->planes();
+
 		buffer->setCookie(i + 1);
-		ipaBuffers.emplace_back(buffer->cookie(), buffer->planes());
+		ipaBuffers.emplace_back(buffer->cookie(),
+					std::vector<FrameBuffer::Plane>{ planes.begin(), planes.end() });
 	}
 	data->ipa_->mapBuffers(ipaBuffers);
 
@@ -476,7 +479,7 @@ bool PipelineHandlerVimc::match(DeviceEnumerator *enumerator)
 	dm.add("RGB/YUV Input");
 	dm.add("Scaler");
 
-	MediaDevice *media = acquireMediaDevice(enumerator, dm);
+	std::shared_ptr<MediaDevice> media = acquireMediaDevice(enumerator, dm);
 	if (!media)
 		return false;
 
@@ -536,21 +539,21 @@ int VimcCameraData::init()
 	if (!sensor_)
 		return -ENODEV;
 
-	debayer_ = V4L2Subdevice::fromEntityName(media_, "Debayer B");
+	debayer_ = V4L2Subdevice::fromEntityName(media_.get(), "Debayer B");
 	if (debayer_->open())
 		return -ENODEV;
 
-	scaler_ = V4L2Subdevice::fromEntityName(media_, "Scaler");
+	scaler_ = V4L2Subdevice::fromEntityName(media_.get(), "Scaler");
 	if (scaler_->open())
 		return -ENODEV;
 
-	video_ = V4L2VideoDevice::fromEntityName(media_, "RGB/YUV Capture");
+	video_ = V4L2VideoDevice::fromEntityName(media_.get(), "RGB/YUV Capture");
 	if (video_->open())
 		return -ENODEV;
 
 	video_->bufferReady.connect(this, &VimcCameraData::imageBufferReady);
 
-	raw_ = V4L2VideoDevice::fromEntityName(media_, "Raw Capture 1");
+	raw_ = V4L2VideoDevice::fromEntityName(media_.get(), "Raw Capture 1");
 	if (raw_->open())
 		return -ENODEV;
 
@@ -615,8 +618,8 @@ void VimcCameraData::imageBufferReady(FrameBuffer *buffer)
 	}
 
 	/* Record the sensor's timestamp in the request metadata. */
-	request->metadata().set(controls::SensorTimestamp,
-				buffer->metadata().timestamp);
+	request->_d()->metadata().set(controls::SensorTimestamp,
+				      buffer->metadata().timestamp);
 
 	pipe->completeBuffer(request, buffer);
 	pipe->completeRequest(request);

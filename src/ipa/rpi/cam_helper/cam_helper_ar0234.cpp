@@ -79,19 +79,18 @@ uint32_t CamHelperAr0234::gainCode(double gain) const
 	/*
 	 * Invert the gain model.
 	 *
-	 * We intentionally truncate toward 0 when converting to uint8_t, which
-	 * matches the "INT(...)" behaviour described in the developer guide for
-	 * s=1 and s=3 (INT(t/2)). For s=0 and s=2 this produces a valid 4-bit
-	 * fine value in the range [0, 15]. For s=4 we keep t=0 as we clamp the
-	 * gain to <= 16.0.
+	 * We always compute the fine code at 32x precision and truncate toward 0
+	 * when converting to uint8_t. For odd s values (1, 3) the developer
+	 * guide specifies INT(t/2), so we clear the LSB to match. For s=4 we
+	 * keep t=0 as we clamp the gain to <= 16.0.
 	 */
-	if ((regCoarse == 0) || (regCoarse == 2)) {
+	if (regCoarse < 4) {
 		double gainCoarse = (1 << regCoarse); /* 2^s */
 		regFine = static_cast<uint8_t>((1.0 - (gainCoarse / gain)) * 32.0);
-	} else if ((regCoarse == 1) || (regCoarse == 3)) {
-		double gainCoarse = (1 << regCoarse); /* 2^s */
-		regFine = 2 * static_cast<uint8_t>((1.0 - (gainCoarse / gain)) * 16.0);
 	}
+
+	if (regCoarse % 2 != 0)
+		regFine &= ~0x1;
 
 	return (regCoarse << 4) | (regFine & 0xF);
 }
@@ -109,11 +108,8 @@ double CamHelperAr0234::gain(uint32_t gainCode) const
 	 */
 	const double m = 1.0 + std::numeric_limits<double>::epsilon();
 
-	if ((regCoarse == 0) || (regCoarse == 2)) {
+	if (regCoarse < 4)
 		gainFine = 1 / (1 - (regFine / 32.0));
-	} else if ((regCoarse == 1) || (regCoarse == 3)) {
-		gainFine = 1 / (1 - (static_cast<double>(regFine / 2) / 16.0));
-	}
 
 	return m * gainCoarse * gainFine;
 }

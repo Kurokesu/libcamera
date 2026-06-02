@@ -89,11 +89,15 @@ MdParser::Status MdParserOnsemi::findRegs(libcamera::Span<const uint8_t> buffer)
 		switch (tag) {
 		case TagData:
 			if (it->first == currentRegAddr) {
-				LOG(ONSEMI, Debug) << "Register 0x" << std::hex << it->first << " found at " << std::dec << index;
+				LOG(ONSEMI, Debug)
+					<< "Register 0x" << std::hex << it->first
+					<< " found at " << std::dec << index;
 				it->second = index;
 				it++;
 			} else if (it->first < currentRegAddr) {
-				LOG(ONSEMI, Error) << "Register 0x" << std::hex << it->first << " not found, abort..." << std::dec;
+				LOG(ONSEMI, Error)
+					<< "Register 0x" << std::hex << it->first
+					<< " not found, abort..." << std::dec;
 				parse = false;
 			}
 
@@ -110,12 +114,16 @@ MdParser::Status MdParserOnsemi::findRegs(libcamera::Span<const uint8_t> buffer)
 		case TagLineStart:
 			embeddedLine++;
 			waitForLineStart = false;
-			LOG(ONSEMI, Debug) << "Line " << static_cast<int>(embeddedLine) << " start at " << index;
+			LOG(ONSEMI, Debug)
+				<< "Line " << static_cast<int>(embeddedLine)
+				<< " start at " << index;
 			index++;
 			break;
 		case TagEndOfData:
 			if (!waitForLineStart) {
-				LOG(ONSEMI, Debug) << "End of line " << static_cast<int>(embeddedLine) << " at " << index;
+				LOG(ONSEMI, Debug)
+					<< "End of line " << static_cast<int>(embeddedLine)
+					<< " at " << index;
 
 				if (embeddedLine == numLines_) {
 					LOG(ONSEMI, Debug) << "All embedded lines parsed. Finish";
@@ -127,7 +135,9 @@ MdParser::Status MdParserOnsemi::findRegs(libcamera::Span<const uint8_t> buffer)
 			index++;
 			break;
 		default:
-			LOG(ONSEMI, Error) << "Unexpected tag 0x" << std::hex << static_cast<unsigned int>(tag) << " at " << std::dec << index;
+			LOG(ONSEMI, Error)
+				<< "Unexpected tag 0x" << std::hex << static_cast<unsigned int>(tag)
+				<< " at " << std::dec << index;
 			return ERROR;
 		}
 	}
@@ -143,13 +153,15 @@ MdParser::Status MdParserOnsemi::findRegs(libcamera::Span<const uint8_t> buffer)
 MdParser::Status MdParserOnsemi::getValue(libcamera::Span<const uint8_t> buffer,
 					  uint16_t index, uint16_t *value, uint8_t tag0, uint8_t tag1)
 {
-	if ((dataWithoutPadding(buffer, index) != tag0) || (dataWithoutPadding(buffer, index + RegDataBytes) != tag1)) {
+	if ((dataWithoutPadding(buffer, index) != tag0) ||
+	    (dataWithoutPadding(buffer, index + RegDataBytes) != tag1)) {
 		LOG(ONSEMI, Error) << "Incorrect register value tags at " << index;
 		return ERROR;
 	}
 
 	index++;
-	*value = (dataWithoutPadding(buffer, index) << 8) | dataWithoutPadding(buffer, index + RegDataBytes);
+	*value = (dataWithoutPadding(buffer, index) << 8) |
+		 dataWithoutPadding(buffer, index + RegDataBytes);
 
 	return OK;
 }

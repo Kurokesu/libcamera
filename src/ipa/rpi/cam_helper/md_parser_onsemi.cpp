@@ -28,8 +28,8 @@ LOG_DECLARE_CATEGORY(ONSEMI)
 
 MdParserOnsemi::MdParserOnsemi(std::initializer_list<uint16_t> const *registerList)
 {
-	for (auto reg_address : *registerList)
-		offsets_[reg_address] = {};
+	for (auto regAddress : *registerList)
+		offsets_[regAddress] = {};
 }
 
 MdParser::Status MdParserOnsemi::parse(libcamera::Span<const uint8_t> buffer,
@@ -51,7 +51,7 @@ MdParser::Status MdParserOnsemi::parse(libcamera::Span<const uint8_t> buffer,
 	}
 
 	registers.clear();
-	for (const auto &[reg_address, offset] : offsets_) {
+	for (const auto &[regAddress, offset] : offsets_) {
 		if (!offset) {
 			reset_ = true;
 			return NOTFOUND;
@@ -65,7 +65,7 @@ MdParser::Status MdParserOnsemi::parse(libcamera::Span<const uint8_t> buffer,
 			return ret;
 		}
 
-		registers[reg_address] = registerValue;
+		registers[regAddress] = registerValue;
 	}
 
 	return OK;
@@ -74,56 +74,56 @@ MdParser::Status MdParserOnsemi::parse(libcamera::Span<const uint8_t> buffer,
 MdParser::Status MdParserOnsemi::findRegs(libcamera::Span<const uint8_t> buffer)
 {
 	MdParser::Status ret;
-	bool wait_for_line_start = true, parse = true;
-	uint8_t embedded_line = 0;
-	uint16_t index = 0, current_reg_addr = 0;
-	uint16_t index_amount = buffer.size();
+	bool waitForLineStart = true, parse = true;
+	uint8_t embeddedLine = 0;
+	uint16_t index = 0, currentRegAddr = 0;
+	uint16_t indexAmount = buffer.size();
 	OffsetMap::iterator it = offsets_.begin();
 
 	if (paddingInterval_ > 0)
-		index_amount -= buffer.size() / (paddingInterval_ + 1);
+		indexAmount -= buffer.size() / (paddingInterval_ + 1);
 
-	while ((index < index_amount) && (it != offsets_.end()) && parse) {
+	while ((index < indexAmount) && (it != offsets_.end()) && parse) {
 		uint8_t tag = dataWithoutPadding(buffer, index);
 
 		switch (tag) {
 		case TAG_DATA:
-			if (it->first == current_reg_addr) {
+			if (it->first == currentRegAddr) {
 				LOG(ONSEMI, Debug) << "Register 0x" << std::hex << it->first << " found at " << std::dec << index;
 				it->second = index;
 				it++;
-			} else if (it->first < current_reg_addr) {
+			} else if (it->first < currentRegAddr) {
 				LOG(ONSEMI, Error) << "Register 0x" << std::hex << it->first << " not found, abort..." << std::dec;
 				parse = false;
 			}
 
-			current_reg_addr += REG_SIZE_BYTES;
+			currentRegAddr += REG_SIZE_BYTES;
 			index += REG_PACKET_SIZE_BYTES;
 			break;
 		case TAG_ADDR_MSB:
-			ret = getValue(buffer, index, &current_reg_addr, TAG_ADDR_MSB, TAG_ADDR_LSB);
+			ret = getValue(buffer, index, &currentRegAddr, TAG_ADDR_MSB, TAG_ADDR_LSB);
 			if (ret != OK)
 				return ret;
 
 			index += REG_PACKET_SIZE_BYTES;
 			break;
 		case TAG_LINE_START:
-			embedded_line++;
-			wait_for_line_start = false;
-			LOG(ONSEMI, Debug) << "Line " << (int)embedded_line << " start at " << index;
+			embeddedLine++;
+			waitForLineStart = false;
+			LOG(ONSEMI, Debug) << "Line " << (int)embeddedLine << " start at " << index;
 			index++;
 			break;
 		case TAG_END_OF_DATA:
-			if (!wait_for_line_start) {
-				LOG(ONSEMI, Debug) << "End of line " << (int)embedded_line << " at " << index;
+			if (!waitForLineStart) {
+				LOG(ONSEMI, Debug) << "End of line " << (int)embeddedLine << " at " << index;
 
-				if (embedded_line == numLines_) {
+				if (embeddedLine == numLines_) {
 					LOG(ONSEMI, Debug) << "All embedded lines parsed. Finish";
 					parse = false;
 				}
 			}
 
-			wait_for_line_start = true;
+			waitForLineStart = true;
 			index++;
 			break;
 		default:

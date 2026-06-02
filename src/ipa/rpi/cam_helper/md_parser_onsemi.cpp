@@ -41,7 +41,7 @@ MdParser::Status MdParserOnsemi::parse(libcamera::Span<const uint8_t> buffer,
 		ASSERT((bitsPerPixel_ == 8) || (bitsPerPixel_ == 10) || (bitsPerPixel_ == 12));
 
 		if (bitsPerPixel_ > 8)
-			paddingInterval_ = (uint8_t)(8 / (bitsPerPixel_ - 8));
+			paddingInterval_ = static_cast<uint8_t>(8 / (bitsPerPixel_ - 8));
 
 		ret = findRegs(buffer);
 		if (ret != MdParser::Status::OK)
@@ -110,12 +110,12 @@ MdParser::Status MdParserOnsemi::findRegs(libcamera::Span<const uint8_t> buffer)
 		case TAG_LINE_START:
 			embeddedLine++;
 			waitForLineStart = false;
-			LOG(ONSEMI, Debug) << "Line " << (int)embeddedLine << " start at " << index;
+			LOG(ONSEMI, Debug) << "Line " << static_cast<int>(embeddedLine) << " start at " << index;
 			index++;
 			break;
 		case TAG_END_OF_DATA:
 			if (!waitForLineStart) {
-				LOG(ONSEMI, Debug) << "End of line " << (int)embeddedLine << " at " << index;
+				LOG(ONSEMI, Debug) << "End of line " << static_cast<int>(embeddedLine) << " at " << index;
 
 				if (embeddedLine == numLines_) {
 					LOG(ONSEMI, Debug) << "All embedded lines parsed. Finish";
@@ -127,7 +127,7 @@ MdParser::Status MdParserOnsemi::findRegs(libcamera::Span<const uint8_t> buffer)
 			index++;
 			break;
 		default:
-			LOG(ONSEMI, Error) << "Unexpected tag 0x" << std::hex << (unsigned int)tag << " at " << std::dec << index;
+			LOG(ONSEMI, Error) << "Unexpected tag 0x" << std::hex << static_cast<unsigned int>(tag) << " at " << std::dec << index;
 			return ERROR;
 		}
 	}

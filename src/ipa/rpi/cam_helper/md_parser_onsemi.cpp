@@ -1,3 +1,10 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
+/*
+ * Copyright (C) 2026, UAB Kurokesu
+ *
+ * onsemi specification based embedded data parser
+ */
+
 #include <libcamera/base/log.h>
 
 #include "md_parser.h"

@@ -155,7 +155,7 @@ private:
 class MdParserOnsemi final : public MdParser
 {
 public:
-	MdParserOnsemi(std::initializer_list<uint16_t> const *registerList);
+	MdParserOnsemi(std::initializer_list<uint16_t> registerList);
 
 	MdParser::Status parse(libcamera::Span<const uint8_t> buffer,
 			       RegisterMap &registers) override;

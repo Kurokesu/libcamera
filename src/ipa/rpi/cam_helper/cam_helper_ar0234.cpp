@@ -14,19 +14,19 @@
 
 using namespace RPiController;
 
-#define TEMPERATURE_MASK 0x3FF
-#define TEMPERATURE_SLOPE 0.7
-#define TEMPERATURE_CALIBRATION 55.0
+constexpr uint16_t temperatureMask = 0x3FF;
+constexpr double temperatureSlope = 0.7;
+constexpr double temperatureCalibration = 55.0;
 
-#define REG_EXPOSURE 0x3012
-#define REG_ANALOG_GAIN 0x3060
-#define REG_FRAME_LENGTH 0x300A
-#define REG_LINE_LENGTH_PCK 0x300C
-#define REG_TEMPSENS 0x30B2
-#define REG_TEMPSENS_CALIB1 0x30C6 // Contains temperature reading value at 55°C
+constexpr uint16_t regExposure = 0x3012;
+constexpr uint16_t regAnalogGain = 0x3060;
+constexpr uint16_t regFrameLength = 0x300A;
+constexpr uint16_t regLineLengthPck = 0x300C;
+constexpr uint16_t regTempSens = 0x30B2;
+constexpr uint16_t regTempSensCalibration = 0x30C6; // Contains temperature reading value at 55°C
 
-constexpr std::initializer_list<uint16_t> registerList = { REG_EXPOSURE, REG_ANALOG_GAIN, REG_FRAME_LENGTH,
-							   REG_LINE_LENGTH_PCK, REG_TEMPSENS, REG_TEMPSENS_CALIB1 };
+constexpr std::initializer_list<uint16_t> registerList = { regExposure, regAnalogGain, regFrameLength,
+							   regLineLengthPck, regTempSens, regTempSensCalibration };
 
 class CamHelperAr0234 : public CamHelper
 {
@@ -136,13 +136,14 @@ void CamHelperAr0234::populateMetadata(const MdParser::RegisterMap &registers,
 {
 	DeviceStatus deviceStatus;
 
-	deviceStatus.lineLength = lineLengthPckToDuration(registers.at(REG_LINE_LENGTH_PCK));
-	deviceStatus.exposureTime = exposure(registers.at(REG_EXPOSURE),
-					     deviceStatus.lineLength);
-	deviceStatus.analogueGain = gain(registers.at(REG_ANALOG_GAIN));
-	deviceStatus.frameLength = registers.at(REG_FRAME_LENGTH);
-	deviceStatus.sensorTemperature = TEMPERATURE_SLOPE * (int(registers.at(REG_TEMPSENS) & TEMPERATURE_MASK) 
-		- int(registers.at(REG_TEMPSENS_CALIB1) & TEMPERATURE_MASK)) + TEMPERATURE_CALIBRATION;
+	int tempVal = registers.at(regTempSens) & temperatureMask;
+	int tempCalibVal = registers.at(regTempSensCalibration) & temperatureMask;
+
+	deviceStatus.lineLength = lineLengthPckToDuration(registers.at(regLineLengthPck));
+	deviceStatus.exposureTime = exposure(registers.at(regExposure), deviceStatus.lineLength);
+	deviceStatus.analogueGain = gain(registers.at(regAnalogGain));
+	deviceStatus.frameLength = registers.at(regFrameLength);
+	deviceStatus.sensorTemperature = temperatureSlope * (tempVal - tempCalibVal) + temperatureCalibration;
 
 	metadata.set("device.status", deviceStatus);
 }

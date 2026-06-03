@@ -83,7 +83,8 @@ std::pair<uint32_t, int32_t> CamHelper::getBlanking(Duration &exposure,
 						     Duration minFrameDuration,
 						     Duration maxFrameDuration) const
 {
-	uint32_t frameLengthMin, frameLengthMax, vblank, hblank;
+	int32_t hblank;
+	uint32_t frameLengthMin, frameLengthMax, vblank;
 	Duration lineLength = mode_.minLineLength;
 
 	/*

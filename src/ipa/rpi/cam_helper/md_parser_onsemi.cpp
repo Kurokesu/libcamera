@@ -26,9 +26,9 @@ constexpr uint8_t TagEndOfData = 0x07;
 constexpr uint8_t RegDataBytes = 2;
 constexpr uint8_t RegPacketBytes = 4;
 
-MdParserOnsemi::MdParserOnsemi(std::initializer_list<uint16_t> const *registerList)
+MdParserOnsemi::MdParserOnsemi(std::initializer_list<uint16_t> registerList)
 {
-	for (auto regAddress : *registerList)
+	for (auto regAddress : registerList)
 		offsets_[regAddress] = {};
 }
 

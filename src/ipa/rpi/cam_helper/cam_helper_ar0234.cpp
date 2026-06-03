@@ -6,8 +6,9 @@
  * camera helper for ar0234 sensor
  */
 
-#include <assert.h>
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "cam_helper.h"
 #include "md_parser.h"
@@ -23,7 +24,7 @@ constexpr uint16_t regAnalogGain = 0x3060;
 constexpr uint16_t regFrameLength = 0x300A;
 constexpr uint16_t regLineLengthPck = 0x300C;
 constexpr uint16_t regTempSens = 0x30B2;
-constexpr uint16_t regTempSensCalibration = 0x30C6; // Contains temperature reading value at 55°C
+constexpr uint16_t regTempSensCalibration = 0x30C6; /* Contains reading value at 55 degrees C */
 
 constexpr std::initializer_list<uint16_t> registerList = { regExposure, regAnalogGain, regFrameLength,
 							   regLineLengthPck, regTempSens, regTempSensCalibration };

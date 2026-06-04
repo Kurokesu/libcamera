@@ -21,24 +21,21 @@ namespace libcamera {
 LOG_DECLARE_CATEGORY(IPARPI)
 }
 
-#define TEMPERATURE_MASK 0x3FF
-#define TEMPERATURE_SLOPE 0.71
-#define TEMPERATURE_CALIBRATION 60.0
+constexpr double temperatureSlope = 0.71;
+constexpr double temperatureCalibration = 60.0;
+constexpr uint16_t temperatureMask = 0x3FF;
+constexpr uint16_t temperatureCalibVal = 468; /* As 0x30C6 is not reported use hardcoded value */
 
-#define REG_EXPOSURE 0x3012
-#define REG_ANALOG_GAIN 0x5900
-#define REG_FRAME_LENGTH 0x300A
-#define REG_LINE_LENGTH_PCK 0x300C
-#define REG_TEMPSENS 0x30B2
-#define REG_TEMPSENS_CALIB1 0x30C6 // Contains temperature reading value at 60°C
+constexpr uint16_t regExposure = 0x3012;
+constexpr uint16_t regAnalogGain = 0x5900;
+constexpr uint16_t regFrameLength = 0x300A;
+constexpr uint16_t regLineLengthPck = 0x300C;
+constexpr uint16_t regTempSens = 0x30B2;
+constexpr uint16_t regTempSensCalib1 = 0x30C6; // Contains temperature reading value at 60°C
 
 constexpr std::initializer_list<uint16_t> registerList = {
-	REG_EXPOSURE,
-	REG_ANALOG_GAIN,
-	REG_FRAME_LENGTH,
-	REG_LINE_LENGTH_PCK,
-	REG_TEMPSENS,
-	// REG_TEMPSENS_CALIB1, For some reason this register is not reported
+	regExposure, regAnalogGain, regFrameLength, regLineLengthPck, regTempSens,
+	// regTempSensCalib1, For some reason this register is not reported
 };
 
 class CamHelperAr0822 : public CamHelper
@@ -87,19 +84,20 @@ void CamHelperAr0822::populateMetadata(const MdParser::RegisterMap &registers,
 {
 	DeviceStatus deviceStatus;
 
-	LOG(IPARPI, Debug) << "raw gain " << registers.at(REG_ANALOG_GAIN);
-	LOG(IPARPI, Debug) << "raw exposure " << registers.at(REG_EXPOSURE);
-	LOG(IPARPI, Debug) << "raw frame length " << registers.at(REG_FRAME_LENGTH);
-	LOG(IPARPI, Debug) << "raw line length " << registers.at(REG_LINE_LENGTH_PCK);
-	LOG(IPARPI, Debug) << "raw sensor temperature " << registers.at(REG_TEMPSENS);
-	// LOG(IPARPI, Debug) << "raw sensor cal temperature " << registers.at(REG_TEMPSENS_CALIB1);
+	LOG(IPARPI, Debug) << "raw gain " << registers.at(regAnalogGain);
+	LOG(IPARPI, Debug) << "raw exposure " << registers.at(regExposure);
+	LOG(IPARPI, Debug) << "raw frame length " << registers.at(regFrameLength);
+	LOG(IPARPI, Debug) << "raw line length " << registers.at(regLineLengthPck);
+	LOG(IPARPI, Debug) << "raw sensor temperature " << registers.at(regTempSens);
+	// LOG(IPARPI, Debug) << "raw sensor cal temperature " << registers.at(regTempSensCalib1);
 
-	deviceStatus.lineLength = lineLengthPckToDuration(registers.at(REG_LINE_LENGTH_PCK));
-	deviceStatus.exposureTime = exposure(registers.at(REG_EXPOSURE),
-				     deviceStatus.lineLength);
-	deviceStatus.analogueGain = gain(registers.at(REG_ANALOG_GAIN));
-	deviceStatus.frameLength = registers.at(REG_FRAME_LENGTH);
-	deviceStatus.sensorTemperature = TEMPERATURE_SLOPE * (int(registers.at(REG_TEMPSENS) & TEMPERATURE_MASK) - 468) + TEMPERATURE_CALIBRATION;
+	deviceStatus.lineLength = lineLengthPckToDuration(registers.at(regLineLengthPck));
+	deviceStatus.exposureTime = exposure(registers.at(regExposure),
+					     deviceStatus.lineLength);
+	deviceStatus.analogueGain = gain(registers.at(regAnalogGain));
+	deviceStatus.frameLength = registers.at(regFrameLength);
+	int tempVal = registers.at(regTempSens) & temperatureMask;
+	deviceStatus.sensorTemperature = temperatureSlope * (tempVal - temperatureCalibVal) + temperatureCalibration;
 
 	LOG(IPARPI, Debug) << "device status" << deviceStatus;
 

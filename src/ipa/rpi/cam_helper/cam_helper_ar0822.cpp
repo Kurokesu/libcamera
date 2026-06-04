@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (C) 2025, Kurokesu UAB
+ * Copyright (C) 2021, Raspberry Pi Ltd
+ * Copyright (C) 2025-2026, UAB Kurokesu
  *
- * cam_helper_Ar0822.cpp - camera information for Ar0822 sensor
+ * camera helper for ar0822 sensor
  */
 
 #include <algorithm>

@@ -5,21 +5,13 @@
  * cam_helper_Ar0822.cpp - camera information for Ar0822 sensor
  */
 
-#include <assert.h>
+#include <algorithm>
 #include <cmath>
-#include <stdlib.h>
-
-#include <libcamera/base/log.h>
 
 #include "cam_helper.h"
 #include "md_parser.h"
 
 using namespace RPiController;
-using namespace libcamera;
-
-namespace libcamera {
-LOG_DECLARE_CATEGORY(IPARPI)
-}
 
 constexpr double temperatureSlope = 0.71;
 constexpr double temperatureCalibration = 60.0;
@@ -84,13 +76,6 @@ void CamHelperAr0822::populateMetadata(const MdParser::RegisterMap &registers,
 {
 	DeviceStatus deviceStatus;
 
-	LOG(IPARPI, Debug) << "raw gain " << registers.at(regAnalogGain);
-	LOG(IPARPI, Debug) << "raw exposure " << registers.at(regExposure);
-	LOG(IPARPI, Debug) << "raw frame length " << registers.at(regFrameLength);
-	LOG(IPARPI, Debug) << "raw line length " << registers.at(regLineLengthPck);
-	LOG(IPARPI, Debug) << "raw sensor temperature " << registers.at(regTempSens);
-	// LOG(IPARPI, Debug) << "raw sensor cal temperature " << registers.at(regTempSensCalib1);
-
 	deviceStatus.lineLength = lineLengthPckToDuration(registers.at(regLineLengthPck));
 	deviceStatus.exposureTime = exposure(registers.at(regExposure),
 					     deviceStatus.lineLength);
@@ -98,8 +83,6 @@ void CamHelperAr0822::populateMetadata(const MdParser::RegisterMap &registers,
 	deviceStatus.frameLength = registers.at(regFrameLength);
 	int tempVal = registers.at(regTempSens) & temperatureMask;
 	deviceStatus.sensorTemperature = temperatureSlope * (tempVal - temperatureCalibVal) + temperatureCalibration;
-
-	LOG(IPARPI, Debug) << "device status" << deviceStatus;
 
 	metadata.set("device.status", deviceStatus);
 }

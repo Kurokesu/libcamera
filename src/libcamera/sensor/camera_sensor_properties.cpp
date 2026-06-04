@@ -122,6 +122,23 @@ const CameraSensorProperties *CameraSensorProperties::get(const std::string &sen
 			},
 			.sensorDelays = { },
 		} },
+		{ "ar0822", {
+			.unitCellSize = { 2000, 2000 },
+			.testPatternModes = {
+				{ controls::draft::TestPatternModeOff, 0 },
+				{ controls::draft::TestPatternModeSolidColor, 1 },
+				{ controls::draft::TestPatternModeColorBars, 2 },
+				{ controls::draft::TestPatternModeColorBarsFadeToGray, 3 },
+				{ controls::draft::TestPatternModePn9, 4 },
+				{ controls::draft::TestPatternModeCustom1, 256 },
+			},
+			.sensorDelays = {
+				.exposureDelay = 2,
+				.gainDelay = 2,
+				.vblankDelay = 2,
+				.hblankDelay = 2
+			},
+		} },
 		{ "gc05a2", {
 			.unitCellSize = { 1120, 1120 },
 			.testPatternModes = {

@@ -1,3 +1,10 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
+/*
+ * Copyright (C) 2025-2026, UAB Kurokesu
+ *
+ * onsemi specification based embedded data parser
+ */
+
 #include <libcamera/base/log.h>
 
 #include "md_parser.h"
@@ -10,30 +17,31 @@ LOG_DEFINE_CATEGORY(ONSEMI)
 LOG_DECLARE_CATEGORY(ONSEMI)
 } // namespace libcamera
 
-#define TAG_LINE_START 0x0A
-#define TAG_ADDR_MSB 0xAA
-#define TAG_ADDR_LSB 0xA5
-#define TAG_DATA 0x5A
-#define TAG_END_OF_DATA 0x07
+constexpr uint8_t TagLineStart = 0x0A;
+constexpr uint8_t TagAddrMsb = 0xAA;
+constexpr uint8_t TagAddrLsb = 0xA5;
+constexpr uint8_t TagData = 0x5A;
+constexpr uint8_t TagEndOfData = 0x07;
 
-#define REG_SIZE_BYTES 2 // Data bytes
-#define REG_PACKET_SIZE_BYTES 4 // Tag bytes + data bytes
+constexpr uint8_t RegDataBytes = 2;
+constexpr uint8_t RegPacketBytes = 4;
 
-MdParserOnSemi::MdParserOnSemi(std::initializer_list<uint16_t> const *registerList)
+MdParserOnsemi::MdParserOnsemi(std::initializer_list<uint16_t> registerList)
 {
-	for (auto reg_address : *registerList)
-		offsets_[reg_address] = {};
+	for (auto regAddress : registerList)
+		offsets_[regAddress] = {};
 }
 
-MdParser::Status MdParserOnSemi::parse(libcamera::Span<const uint8_t> buffer,
+MdParser::Status MdParserOnsemi::parse(libcamera::Span<const uint8_t> buffer,
 				       RegisterMap &registers)
 {
 	MdParser::Status ret;
 
 	if (reset_) {
-		ASSERT((bitsPerPixel_ == 10) || (bitsPerPixel_ == 12));
+		ASSERT((bitsPerPixel_ == 8) || (bitsPerPixel_ == 10) || (bitsPerPixel_ == 12));
 
-		paddingInterval_ = (uint8_t)(8 / (bitsPerPixel_ - 8));
+		if (bitsPerPixel_ > 8)
+			paddingInterval_ = static_cast<uint8_t>(8 / (bitsPerPixel_ - 8));
 
 		ret = findRegs(buffer);
 		if (ret != MdParser::Status::OK)
@@ -43,80 +51,93 @@ MdParser::Status MdParserOnSemi::parse(libcamera::Span<const uint8_t> buffer,
 	}
 
 	registers.clear();
-	for (const auto &[reg_address, offset] : offsets_) {
+	for (const auto &[regAddress, offset] : offsets_) {
 		if (!offset) {
 			reset_ = true;
 			return NOTFOUND;
 		}
 
 		uint16_t registerValue;
-		ret = getValue(buffer, offset.value(), &registerValue, TAG_DATA, TAG_DATA);
+		ret = getValue(buffer, offset.value(), &registerValue, TagData, TagData);
 
 		if (ret != OK) {
 			reset_ = true;
 			return ret;
 		}
 
-		registers[reg_address] = registerValue;
+		registers[regAddress] = registerValue;
 	}
 
 	return OK;
 }
 
-MdParser::Status MdParserOnSemi::findRegs(libcamera::Span<const uint8_t> buffer)
+MdParser::Status MdParserOnsemi::findRegs(libcamera::Span<const uint8_t> buffer)
 {
 	MdParser::Status ret;
-	bool wait_for_line_start = true, parse = true;
-	uint8_t embedded_line = 0;
-	uint16_t index = 0, current_reg_addr = 0;
-	uint16_t index_amount = buffer.size() - (buffer.size() / (paddingInterval_ + 1));
+	bool waitForLineStart = true, parse = true;
+	uint8_t embeddedLine = 0;
+	uint16_t index = 0, currentRegAddr = 0;
+	uint16_t indexAmount = buffer.size();
 	OffsetMap::iterator it = offsets_.begin();
 
-	while ((index < index_amount) && (it != offsets_.end()) && parse) {
+	if (paddingInterval_ > 0)
+		indexAmount -= buffer.size() / (paddingInterval_ + 1);
+
+	while ((index < indexAmount) && (it != offsets_.end()) && parse) {
 		uint8_t tag = dataWithoutPadding(buffer, index);
 
 		switch (tag) {
-		case TAG_DATA:
-			if (it->first == current_reg_addr) {
-				LOG(ONSEMI, Debug) << "Register 0x" << std::hex << it->first << " found at " << std::dec << index;
+		case TagData:
+			if (it->first == currentRegAddr) {
+				LOG(ONSEMI, Debug)
+					<< "Register 0x" << std::hex << it->first
+					<< " found at " << std::dec << index;
 				it->second = index;
 				it++;
-			} else if (it->first < current_reg_addr) {
-				LOG(ONSEMI, Error) << "Register 0x" << std::hex << it->first << " not found, abort..." << std::dec;
+			} else if (it->first < currentRegAddr) {
+				LOG(ONSEMI, Error)
+					<< "Register 0x" << std::hex << it->first
+					<< " not found, abort..." << std::dec;
 				parse = false;
 			}
 
-			current_reg_addr += REG_SIZE_BYTES;
-			index += REG_PACKET_SIZE_BYTES;
+			currentRegAddr += RegDataBytes;
+			index += RegPacketBytes;
 			break;
-		case TAG_ADDR_MSB:
-			ret = getValue(buffer, index, &current_reg_addr, TAG_ADDR_MSB, TAG_ADDR_LSB);
+		case TagAddrMsb:
+			ret = getValue(buffer, index, &currentRegAddr, TagAddrMsb, TagAddrLsb);
 			if (ret != OK)
 				return ret;
 
-			index += REG_PACKET_SIZE_BYTES;
+			index += RegPacketBytes;
 			break;
-		case TAG_LINE_START:
-			embedded_line++;
-			wait_for_line_start = false;
-			LOG(ONSEMI, Debug) << "Line " << (int)embedded_line << " start at " << index;
+		case TagLineStart:
+			embeddedLine++;
+			waitForLineStart = false;
+			LOG(ONSEMI, Debug)
+				<< "Line " << static_cast<int>(embeddedLine)
+				<< " start at " << index;
 			index++;
 			break;
-		case TAG_END_OF_DATA:
-			if (!wait_for_line_start) {
-				LOG(ONSEMI, Debug) << "End of line " << (int)embedded_line << " at " << index;
+		case TagEndOfData:
+			if (!waitForLineStart) {
+				LOG(ONSEMI, Debug)
+					<< "End of line " << static_cast<int>(embeddedLine)
+					<< " at " << index;
 
-				if (embedded_line == numLines_) {
+				if (embeddedLine == numLines_) {
 					LOG(ONSEMI, Debug) << "All embedded lines parsed. Finish";
 					parse = false;
 				}
 			}
 
-			wait_for_line_start = true;
+			waitForLineStart = true;
 			index++;
 			break;
 		default:
-			LOG(ONSEMI, Error) << "Unexpected tag 0x" << std::hex << (unsigned int)tag << " at " << std::dec << index;
+			LOG(ONSEMI, Error)
+				<< "Unexpected tag 0x" << std::hex << static_cast<unsigned int>(tag)
+				<< " at " << std::dec << index;
 			return ERROR;
 		}
 	}
@@ -129,24 +150,28 @@ MdParser::Status MdParserOnSemi::findRegs(libcamera::Span<const uint8_t> buffer)
 	return OK;
 }
 
-MdParser::Status MdParserOnSemi::getValue(libcamera::Span<const uint8_t> buffer,
+MdParser::Status MdParserOnsemi::getValue(libcamera::Span<const uint8_t> buffer,
 					  uint16_t index, uint16_t *value, uint8_t tag0, uint8_t tag1)
 {
-	if ((dataWithoutPadding(buffer, index) != tag0) || (dataWithoutPadding(buffer, index + REG_SIZE_BYTES) != tag1)) {
+	if ((dataWithoutPadding(buffer, index) != tag0) ||
+	    (dataWithoutPadding(buffer, index + RegDataBytes) != tag1)) {
 		LOG(ONSEMI, Error) << "Incorrect register value tags at " << index;
 		return ERROR;
 	}
 
 	index++;
-	*value = (dataWithoutPadding(buffer, index) << 8) | dataWithoutPadding(buffer, index + REG_SIZE_BYTES);
+	*value = (dataWithoutPadding(buffer, index) << 8) |
+		 dataWithoutPadding(buffer, index + RegDataBytes);
 
 	return OK;
 }
 
-uint8_t MdParserOnSemi::dataWithoutPadding(libcamera::Span<const uint8_t> buffer,
+uint8_t MdParserOnsemi::dataWithoutPadding(libcamera::Span<const uint8_t> buffer,
 					   uint16_t offset)
 {
-	offset += offset / paddingInterval_;
+	if (paddingInterval_ > 0)
+		offset += offset / paddingInterval_;
+
 	ASSERT(offset < buffer.size());
 
 	return buffer[offset];

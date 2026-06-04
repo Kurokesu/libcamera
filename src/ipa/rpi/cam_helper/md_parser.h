@@ -152,10 +152,10 @@ private:
 	OffsetMap offsets_;
 };
 
-class MdParserOnSemi final : public MdParser
+class MdParserOnsemi final : public MdParser
 {
 public:
-	MdParserOnSemi(std::initializer_list<uint16_t> const *registerList);
+	MdParserOnsemi(std::initializer_list<uint16_t> registerList);
 
 	MdParser::Status parse(libcamera::Span<const uint8_t> buffer,
 			       RegisterMap &registers) override;
@@ -163,7 +163,7 @@ public:
 private:
 	using OffsetMap = std::map<uint16_t, std::optional<uint16_t>>;
 	OffsetMap offsets_;
-	uint8_t paddingInterval_;
+	uint8_t paddingInterval_ = 0;
 
 	MdParser::Status findRegs(libcamera::Span<const uint8_t> buffer);
 

@@ -58,13 +58,17 @@ CamHelperAr0822::CamHelperAr0822()
 
 uint32_t CamHelperAr0822::gainCode(double gain) const
 {
+	/*
+	 * Analog gain register codes gain in 0.375 dB steps, where gain_dB = 20 * log10(gain).
+	 * Convert and clamp to the maximum register value of 119.
+	 */
 	int code = std::log10(gain) * (20.0 / 0.375);
-	return std::max(0, std::min(code, 119));
+	return std::clamp(code, 0, 119);
 }
 
 double CamHelperAr0822::gain(uint32_t gainCode) const
 {
-	return std::pow(10, gainCode * 0.375 / 20.0);
+	return std::pow(10.0, gainCode * 0.375 / 20.0);
 }
 
 bool CamHelperAr0822::sensorEmbeddedDataPresent() const

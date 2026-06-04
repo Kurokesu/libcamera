@@ -76,13 +76,12 @@ void CamHelperAr0822::populateMetadata(const MdParser::RegisterMap &registers,
 				       Metadata &metadata) const
 {
 	DeviceStatus deviceStatus;
+	int tempVal = registers.at(regTempSens) & temperatureMask;
 
 	deviceStatus.lineLength = lineLengthPckToDuration(registers.at(regLineLengthPck));
-	deviceStatus.exposureTime = exposure(registers.at(regExposure),
-					     deviceStatus.lineLength);
+	deviceStatus.exposureTime = exposure(registers.at(regExposure), deviceStatus.lineLength);
 	deviceStatus.analogueGain = gain(registers.at(regAnalogGain));
 	deviceStatus.frameLength = registers.at(regFrameLength);
-	int tempVal = registers.at(regTempSens) & temperatureMask;
 	deviceStatus.sensorTemperature = temperatureSlope * (tempVal - temperatureCalibVal) + temperatureCalibration;
 
 	metadata.set("device.status", deviceStatus);

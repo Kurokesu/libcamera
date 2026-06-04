@@ -23,11 +23,11 @@ constexpr uint16_t regAnalogGain = 0x5900;
 constexpr uint16_t regFrameLength = 0x300A;
 constexpr uint16_t regLineLengthPck = 0x300C;
 constexpr uint16_t regTempSens = 0x30B2;
-constexpr uint16_t regTempSensCalib1 = 0x30C6; // Contains temperature reading value at 60°C
+constexpr uint16_t regTempSensCalib1 = 0x30C6; /* Contains temperature reading value at 60 degrees C */
 
 constexpr std::initializer_list<uint16_t> registerList = {
 	regExposure, regAnalogGain, regFrameLength, regLineLengthPck, regTempSens,
-	// regTempSensCalib1, For some reason this register is not reported
+	/* regTempSensCalib1, register missing from embedded data */
 };
 
 class CamHelperAr0822 : public CamHelper

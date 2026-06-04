@@ -61,7 +61,7 @@ private:
 };
 
 CamHelperAr0822::CamHelperAr0822()
-	: CamHelper(std::make_unique<MdParserOnSemi>(&registerList), frameIntegrationDiff)
+	: CamHelper(std::make_unique<MdParserOnsemi>(registerList), frameIntegrationDiff)
 {
 	parser_->setNumLines(4);
 }

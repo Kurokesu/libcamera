@@ -1,5 +1,6 @@
 Source: libcamera
-Maintainer: Serge Schneider <serge@raspberrypi.com>
+Maintainer: UAB Kurokesu <info@kurokesu.com>
+Uploaders: Danius Kalvaitis <danius@kurokesu.com>
 Section: libs
 Priority: optional
 Build-Depends: debhelper-compat (= 13),
@@ -39,8 +40,8 @@ Build-Depends-Indep: doxygen <!nodoc>,
                      python3-sphinx-book-theme <!nodoc>,
                      python3-sphinxcontrib.doxylink <!nodoc>
 Standards-Version: 4.7.2
-Vcs-Browser: https://github.com/RPi-Distro/libcamera
-Vcs-Git: https://github.com/RPi-Distro/libcamera.git
+Vcs-Browser: https://github.com/Kurokesu/libcamera
+Vcs-Git: https://github.com/Kurokesu/libcamera.git -b debian/latest
 Homepage: https://libcamera.org/
 Rules-Requires-Root: no
 

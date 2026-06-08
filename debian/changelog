@@ -1,3 +1,13 @@
+libcamera (0.7.1+rpt20260429+krks1-1) trixie; urgency=medium
+
+  * Kurokesu fork of 0.7.1+rpt20260429
+  * Add AR0234, AR0822 and IMX585 camera support
+  * Add onsemi embedded data parser
+  * Support negative HBLANK values for onsemi sensors
+  * d/c: Set Maintainer, Uploaders and Vcs-* to Kurokesu
+
+ -- Danius Kalvaitis <danius@kurokesu.com>  Mon, 08 Jun 2026 20:25:27 +0300
+
 libcamera (0.7.1+rpt20260429-1) trixie; urgency=medium
 
   * New upstream version 0.7.1+rpt20260429

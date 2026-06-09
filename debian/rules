@@ -20,6 +20,9 @@ endif
 ifneq (,$(filter i386,$(DEB_HOST_ARCH)))
 QCAM=disabled
 # See https://bugs.debian.org/1076986
+else ifneq (,$(filter pkg.libcamera.noqt,$(DEB_BUILD_PROFILES)))
+# qcam's GL viewfinder needs Qt6 OpenGL headers absent from older Qt (bookworm)
+QCAM=disabled
 else
 QCAM=enabled
 endif
@@ -31,6 +34,13 @@ else
 	PIPELINES=uvcvideo
 endif
 
+# Disable NN AWB where libtensorflow-lite-dev is unavailable (e.g. bookworm)
+ifneq (,$(filter pkg.libcamera.nonn,$(DEB_BUILD_PROFILES)))
+	AWB_NN=disabled
+else
+	AWB_NN=enabled
+endif
+
 CONFFLAGS += \
        --libexecdir=libexec/${DEB_HOST_MULTIARCH} \
 	-Dgstreamer=enabled \
@@ -40,7 +50,7 @@ CONFFLAGS += \
 	-Dqcam=$(QCAM) \
 	-Dtest=true \
 	-Dv4l2=true \
-	-Drpi-awb-nn=enabled
+	-Drpi-awb-nn=$(AWB_NN)
 
 %:
 	dh $@

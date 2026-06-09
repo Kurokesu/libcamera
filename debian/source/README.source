@@ -1,0 +1,77 @@
+Kurokesu libcamera packaging notes
+==================================
+
+This package is a Kurokesu fork of Raspberry Pi's libcamera packaging.
+The recipe lives on a single DEP-14 `debian/latest` branch and reuses
+RPi's recipe verbatim where possible. Deviations are kept minimal,
+profile-driven, and tracked here so they can be retired when no longer
+needed.
+
+Supported suites
+----------------
+
+  * trixie: build with `--profiles=nodoc`.
+  * bookworm: build with
+    `--profiles=pkg.libcamera.nonn,pkg.libcamera.noqt,nodoc`.
+
+Identity adaptations
+--------------------
+
+These define Kurokesu's fork:
+
+  * Version scheme: `0.7.1+rpt<date>+krks<N>-<M>`. The `+krks<N>`
+    counter resets on each RPi resync; `-<M>` is the Debian packaging
+    revision.
+    Retire when: never (defines the fork).
+  * `Maintainer`, `Uploaders`, `Vcs-*`, `watch`, `gbp.conf` repointed
+    to github.com/Kurokesu/libcamera.
+    Retire when: never (defines the fork).
+
+Build-environment deviations (retirable)
+----------------------------------------
+
+pkg.libcamera.nonn profile
+  Why:         bookworm lacks libtensorflow-lite-dev (NN-AWB).
+  Retire when: bookworm dropped, or libtensorflow-lite-dev reaches the
+               RPi bookworm archive.
+
+noqt wired through d/rules
+  Why:         RPi declared pkg.libcamera.noqt in debian/control
+               (guarding qt6-base-dev) but debian/rules never read the
+               profile, so requesting it dropped the build-dep yet
+               still passed -Dqcam=enabled and failed dep-resolution.
+  Retire when: RPi merges the same fix to pios/trixie.
+
+python3-packaging <!nocheck>
+  Why:         test/v4l2_compat/v4l2_compat_test.py imports
+               `from packaging import version`; that module is not
+               in bookworm's build chroot, so the test errored out
+               instead of reaching its normal "no devices" skip.
+  Retire when: RPi adds the build-dep upstream, or bookworm dropped.
+
+Seed
+----
+
+  * Source: github.com/raspberrypi/libcamera, branch `pios/trixie`.
+  * Last seed: 896780d3 (libcamera 0.7.1+rpt20260429-1).
+  * Reseed procedure (in order):
+      1. Replace `debian/` wholesale with the new seed's contents.
+      2. Run `quilt push -a` against the merged source to verify our
+         patches still apply (RPi refreshes patches between syncs and
+         our merges may collide; refresh or replace any failures).
+      3. Reapply this file's deviations.
+      4. Update the "Last seed" SHA above in the same commit as the
+         reseed.
+      5. Bump `+krks<N>` and `-<M>` per project versioning rules
+         (see project plan; not restated here).
+      6. Prepend a new `debian/changelog` entry summarizing what the
+         reseed brings in.
+      7. Build on every supported suite (see "Supported suites").
+
+Editing rule
+------------
+
+Any Kurokesu-specific change to the recipe (e.g. `debian/control`,
+`debian/rules`, `debian/patches/`, `debian/*.install`, or other files
+under `debian/`) must update the deviations section above in the
+same commit.

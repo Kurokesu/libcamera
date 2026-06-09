@@ -5,6 +5,10 @@ libcamera (0.7.1+rpt20260429+krks1-1) trixie; urgency=medium
   * Add onsemi embedded data parser
   * Support negative HBLANK values for onsemi sensors
   * d/c: Set Maintainer, Uploaders and Vcs-* to Kurokesu
+  * d/rules: Honor pkg.libcamera.noqt build profile
+  * d/control,rules: Add pkg.libcamera.nonn profile (gates NN AWB)
+  * d/control: Add python3-packaging build-dep for v4l2_compat_test
+  * d/source: Document Kurokesu fork deviations in README.source
 
  -- Danius Kalvaitis <danius@kurokesu.com>  Mon, 08 Jun 2026 20:25:27 +0300
 

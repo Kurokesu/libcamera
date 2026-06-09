@@ -34,6 +34,13 @@ else
 	PIPELINES=uvcvideo
 endif
 
+# Disable NN AWB where libtensorflow-lite-dev is unavailable (e.g. bookworm)
+ifneq (,$(filter pkg.libcamera.nonn,$(DEB_BUILD_PROFILES)))
+	AWB_NN=disabled
+else
+	AWB_NN=enabled
+endif
+
 CONFFLAGS += \
        --libexecdir=libexec/${DEB_HOST_MULTIARCH} \
 	-Dgstreamer=enabled \
@@ -43,7 +50,7 @@ CONFFLAGS += \
 	-Dqcam=$(QCAM) \
 	-Dtest=true \
 	-Dv4l2=true \
-	-Drpi-awb-nn=enabled
+	-Drpi-awb-nn=$(AWB_NN)
 
 %:
 	dh $@

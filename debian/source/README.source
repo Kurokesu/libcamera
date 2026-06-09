@@ -7,6 +7,13 @@ RPi's recipe verbatim where possible. Deviations are kept minimal,
 profile-driven, and tracked here so they can be retired when no longer
 needed.
 
+Supported suites
+----------------
+
+  * trixie: build with `--profiles=nodoc`.
+  * bookworm: build with
+    `--profiles=pkg.libcamera.nonn,pkg.libcamera.noqt,nodoc`.
+
 Identity adaptations
 --------------------
 
@@ -15,8 +22,10 @@ These define Kurokesu's fork:
   * Version scheme: `0.7.1+rpt<date>+krks<N>-<M>`. The `+krks<N>`
     counter resets on each RPi resync; `-<M>` is the Debian packaging
     revision.
+    Retire when: never (defines the fork).
   * `Maintainer`, `Uploaders`, `Vcs-*`, `watch`, `gbp.conf` repointed
     to github.com/Kurokesu/libcamera.
+    Retire when: never (defines the fork).
 
 Build-environment deviations (retirable)
 ----------------------------------------
@@ -45,13 +54,24 @@ Seed
 
   * Source: github.com/raspberrypi/libcamera, branch `pios/trixie`.
   * Last seed: 896780d3 (libcamera 0.7.1+rpt20260429-1).
-  * Reseed procedure: replace `debian/` wholesale with the new seed's
-    contents, reapply this file's deviations, prepend a new changelog
-    entry, build on both supported suites.
+  * Reseed procedure (in order):
+      1. Replace `debian/` wholesale with the new seed's contents.
+      2. Run `quilt push -a` against the merged source to verify our
+         patches still apply (RPi refreshes patches between syncs and
+         our merges may collide; refresh or replace any failures).
+      3. Reapply this file's deviations.
+      4. Update the "Last seed" SHA above in the same commit as the
+         reseed.
+      5. Bump `+krks<N>` and `-<M>` per project versioning rules
+         (see project plan; not restated here).
+      6. Prepend a new `debian/changelog` entry summarizing what the
+         reseed brings in.
+      7. Build on every supported suite (see "Supported suites").
 
 Editing rule
 ------------
 
-Any Kurokesu-specific change to `debian/control` or `debian/rules`
-(adding a profile, adding/removing a build-dep, retiring a deviation)
-must update the deviations section above in the same commit.
+Any Kurokesu-specific change to the recipe (e.g. `debian/control`,
+`debian/rules`, `debian/patches/`, `debian/*.install`, or other files
+under `debian/`) must update the deviations section above in the
+same commit.

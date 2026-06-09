@@ -20,6 +20,9 @@ endif
 ifneq (,$(filter i386,$(DEB_HOST_ARCH)))
 QCAM=disabled
 # See https://bugs.debian.org/1076986
+else ifneq (,$(filter pkg.libcamera.noqt,$(DEB_BUILD_PROFILES)))
+# qcam's GL viewfinder needs Qt6 OpenGL headers absent from older Qt (bookworm)
+QCAM=disabled
 else
 QCAM=enabled
 endif

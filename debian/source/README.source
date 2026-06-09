@@ -1,0 +1,57 @@
+Kurokesu libcamera packaging notes
+==================================
+
+This package is a Kurokesu fork of Raspberry Pi's libcamera packaging.
+The recipe lives on a single DEP-14 `debian/latest` branch and reuses
+RPi's recipe verbatim where possible. Deviations are kept minimal,
+profile-driven, and tracked here so they can be retired when no longer
+needed.
+
+Identity adaptations
+--------------------
+
+These define Kurokesu's fork:
+
+  * Version scheme: `0.7.1+rpt<date>+krks<N>-<M>`. The `+krks<N>`
+    counter resets on each RPi resync; `-<M>` is the Debian packaging
+    revision.
+  * `Maintainer`, `Uploaders`, `Vcs-*`, `watch`, `gbp.conf` repointed
+    to github.com/Kurokesu/libcamera.
+
+Build-environment deviations (retirable)
+----------------------------------------
+
+pkg.libcamera.nonn profile
+  Why:         bookworm lacks libtensorflow-lite-dev (NN-AWB).
+  Retire when: bookworm dropped, or libtensorflow-lite-dev reaches the
+               RPi bookworm archive.
+
+noqt wired through d/rules
+  Why:         RPi declared pkg.libcamera.noqt in debian/control
+               (guarding qt6-base-dev) but debian/rules never read the
+               profile, so requesting it dropped the build-dep yet
+               still passed -Dqcam=enabled and failed dep-resolution.
+  Retire when: RPi merges the same fix to pios/trixie.
+
+python3-packaging <!nocheck>
+  Why:         test/v4l2_compat/v4l2_compat_test.py imports
+               `from packaging import version`; that module is not
+               in bookworm's build chroot, so the test errored out
+               instead of reaching its normal "no devices" skip.
+  Retire when: RPi adds the build-dep upstream, or bookworm dropped.
+
+Seed
+----
+
+  * Source: github.com/raspberrypi/libcamera, branch `pios/trixie`.
+  * Last seed: 896780d3 (libcamera 0.7.1+rpt20260429-1).
+  * Reseed procedure: replace `debian/` wholesale with the new seed's
+    contents, reapply this file's deviations, prepend a new changelog
+    entry, build on both supported suites.
+
+Editing rule
+------------
+
+Any Kurokesu-specific change to `debian/control` or `debian/rules`
+(adding a profile, adding/removing a build-dep, retiring a deviation)
+must update the deviations section above in the same commit.

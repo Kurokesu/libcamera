@@ -74,13 +74,15 @@ jobs:
         with:
           path: artifacts/
 
-      - name: Flatten artifact tree (publish .deb + .changes + .buildinfo)
-        id: stage
+      - name: Bundle assets per suite
+        # Suites produce identically named files, so they ship as one
+        # tarball per suite instead of a flat (colliding) file list.
         run: |
           mkdir -p release-assets
-          find artifacts -type f \
-            \( -name '*.deb' -o -name '*.changes' -o -name '*.buildinfo' \) \
-            -exec cp -v {} release-assets/ \;
+          for dir in artifacts/*/; do
+            name=$(basename "$dir")
+            tar -C "$dir" -czf "release-assets/${name}.tar.gz" .
+          done
           ls -la release-assets/
 
       - name: Create or update GitHub Release
@@ -102,13 +104,17 @@ jobs:
             --notes "$(cat <<EOF
           Debian \`.deb\` set for libcamera ${{ needs.preflight.outputs.packaging-version }}.
 
-          Built suites: trixie, bookworm (arm64).
+          Built suites: trixie, bookworm (arm64). One tarball per
+          suite, containing the binary packages, debug symbols, build
+          log and source package.
           Source ref: \`${{ needs.preflight.outputs.upstream-ref }}\`.
 
-          Install (download all .deb files for your suite, then):
+          Install (download the tarball for your suite, then):
 
           \`\`\`
-          sudo apt install ./libcamera*.deb
+          tar xf libcamera-*-arm64.tar.gz
+          rm -f *dbgsym*.deb
+          sudo apt install ./*.deb
           \`\`\`
           EOF
           )" \

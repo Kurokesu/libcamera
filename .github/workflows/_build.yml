@@ -26,6 +26,14 @@ on:
         description: Git ref for the upstream source checkout (branch or tag)
         type: string
         default: kurokesu
+      version-suffix:
+        description: >-
+          Suite-level suffix appended to the binary package version at
+          build time (e.g. ~bpo12+1 for bookworm). The changelog and
+          tags stay suite-free; this only disambiguates the built
+          binaries, Debian-backports style.
+        type: string
+        default: ''
 
 jobs:
   build:
@@ -116,6 +124,10 @@ jobs:
         run: |
           PACKAGING=$(dpkg-parsechangelog -SVersion)
           UPSTREAM=${PACKAGING%-*}
+          # The suffix folds into the packaging version so artifact
+          # names reflect what the binaries actually carry. The
+          # upstream version (and orig tarball) stays shared.
+          PACKAGING="${PACKAGING}${{ inputs.version-suffix }}"
           echo "packaging=${PACKAGING}" >> "$GITHUB_OUTPUT"
           echo "upstream=${UPSTREAM}"   >> "$GITHUB_OUTPUT"
           echo "Packaging version: ${PACKAGING}"
@@ -148,11 +160,13 @@ jobs:
         run: |
           PKG="${{ inputs.package-name }}"
           UPSTREAM="${{ steps.version.outputs.upstream }}"
+          SUFFIX="${{ inputs.version-suffix }}"
           cd "${GITHUB_WORKSPACE}/${PKG}-${UPSTREAM}"
           sbuild \
             -d "${{ inputs.suite }}" \
             --arch=arm64 \
             --profiles="${{ inputs.profiles }}" \
+            ${SUFFIX:+--append-to-version="${SUFFIX}"} \
             --extra-repository="deb http://archive.raspberrypi.com/debian/ ${{ inputs.suite }} main" \
             --extra-repository-key="${GITHUB_WORKSPACE}/recipe/.github/keys/raspberrypi-archive-keyring.gpg" \
             --no-clean-source

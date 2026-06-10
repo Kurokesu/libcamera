@@ -24,11 +24,14 @@ jobs:
         include:
           - suite: trixie
             profiles: nodoc
+            version-suffix: ''
           - suite: bookworm
             profiles: pkg.libcamera.nonn,pkg.libcamera.noqt,nodoc
+            version-suffix: '~bpo12+1'
     uses: ./.github/workflows/_build.yml
     with:
       suite: ${{ matrix.suite }}
       profiles: ${{ matrix.profiles }}
       source-repo: ${{ github.repository }}
       package-name: libcamera
+      version-suffix: ${{ matrix.version-suffix }}

@@ -123,7 +123,7 @@ jobs:
           sbuild \
             -d "${{ inputs.suite }}" \
             --arch=arm64 \
-            --build-profiles="${{ inputs.profiles }}" \
+            --profiles="${{ inputs.profiles }}" \
             --extra-repository="deb http://archive.raspberrypi.com/debian/ ${{ inputs.suite }} main" \
             --extra-repository-key="${GITHUB_WORKSPACE}/recipe/.github/keys/raspberrypi-archive-keyring.gpg" \
             --no-clean-source

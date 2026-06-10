@@ -128,6 +128,21 @@ jobs:
             --extra-repository-key="${GITHUB_WORKSPACE}/recipe/.github/keys/raspberrypi-archive-keyring.gpg" \
             --no-clean-source
 
+      - name: Sanitize sbuild log filename
+        # sbuild's timestamped log name contains colons, which
+        # actions/upload-artifact rejects. Keep the log under its
+        # stable colon-free symlink name.
+        if: always() && steps.version.outcome == 'success'
+        run: |
+          cd "${GITHUB_WORKSPACE}"
+          for f in *.build; do
+            if [ -L "$f" ]; then
+              target=$(readlink "$f")
+              rm "$f"
+              mv "$target" "$f"
+            fi
+          done
+
       - name: Upload .deb set + build metadata
         # Run even on build failure so the .build log is preserved.
         if: always() && steps.version.outcome == 'success'

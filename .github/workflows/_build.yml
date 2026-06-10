@@ -74,6 +74,8 @@ jobs:
           EOF
 
       - name: Create chroot tarball (${{ inputs.suite }}-arm64)
+        # The signed-by path stays valid inside the chroot through
+        # its own debian-archive-keyring package.
         run: |
           mmdebstrap \
             --variant=buildd \
@@ -81,7 +83,7 @@ jobs:
             --include=ca-certificates,debian-archive-keyring \
             "${{ inputs.suite }}" \
             ~/.cache/sbuild/"${{ inputs.suite }}"-arm64.tar.zst \
-            "deb http://deb.debian.org/debian ${{ inputs.suite }} main"
+            "deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://deb.debian.org/debian ${{ inputs.suite }} main"
 
       - name: Compute upstream + packaging versions from changelog
         id: version

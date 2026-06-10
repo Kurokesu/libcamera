@@ -44,6 +44,21 @@ jobs:
           fi
           echo "OK: source tag ${REF} -> $(git rev-parse "refs/tags/${REF}")"
 
+      - name: Verify tag matches debian/changelog
+        # Guards hand-made tags (release.sh tags always match). The
+        # checkout on a tag push is the tagged commit.
+        run: |
+          command -v dpkg-parsechangelog >/dev/null \
+            || sudo apt-get install -y --no-install-recommends dpkg-dev
+          CHANGELOG=$(dpkg-parsechangelog -SVersion)
+          TAG="${{ steps.parse.outputs.packaging }}"
+          if [ "${CHANGELOG}" != "${TAG}" ]; then
+            echo "::error::Packaging tag says '${TAG}' but debian/changelog at the tagged commit says '${CHANGELOG}'."
+            echo "::error::Use release.sh, or retag the commit whose changelog matches."
+            exit 1
+          fi
+          echo "OK: tag matches changelog (${CHANGELOG})"
+
   build:
     needs: preflight
     name: ${{ matrix.suite }}
@@ -75,13 +90,23 @@ jobs:
           path: artifacts/
 
       - name: Bundle assets per suite
-        # Suites produce identically named files, so they ship as one
-        # tarball per suite instead of a flat (colliding) file list.
+        # Two assets per suite: runtime debs to install, debug bundle
+        # with dbgsym and build/source metadata (see "Releasing" in
+        # debian/source/README.source). Complement-based partition so
+        # no file can silently drop out of both bundles.
         run: |
           mkdir -p release-assets
           for dir in artifacts/*/; do
             name=$(basename "$dir")
-            tar -C "$dir" -czf "release-assets/${name}.tar.gz" .
+            runtime=$(cd "$dir" && ls -- *.deb | grep -v dbgsym)
+            debug=$(cd "$dir" && ls | grep -vxF "$runtime")
+            total=$(ls "$dir" | wc -l)
+            if [ $(( $(echo "$runtime" | wc -l) + $(echo "$debug" | wc -l) )) -ne "$total" ]; then
+              echo "::error::Bundle partition for ${name} does not cover all files."
+              exit 1
+            fi
+            tar -C "$dir" -czf "release-assets/${name}.tar.gz" $runtime
+            tar -C "$dir" -czf "release-assets/${name}-debug.tar.gz" $debug
           done
           ls -la release-assets/
 
@@ -104,16 +129,16 @@ jobs:
             --notes "$(cat <<EOF
           Debian \`.deb\` set for libcamera ${{ needs.preflight.outputs.packaging-version }}.
 
-          Built suites: trixie, bookworm (arm64). One tarball per
-          suite, containing the binary packages, debug symbols, build
-          log and source package.
+          Built suites: trixie, bookworm (arm64). Two assets per
+          suite: \`...-arm64.tar.gz\` holds the installable packages
+          (most users need only this one); \`...-debug.tar.gz\` holds
+          debug symbols and build/source metadata.
           Source ref: \`${{ needs.preflight.outputs.upstream-ref }}\`.
 
-          Install (download the tarball for your suite, then):
+          Install (download the runtime tarball for your suite, then):
 
           \`\`\`
           tar xf libcamera-*-arm64.tar.gz
-          rm -f *dbgsym*.deb
           sudo apt install ./*.deb
           \`\`\`
           EOF

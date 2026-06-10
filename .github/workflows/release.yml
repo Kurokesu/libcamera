@@ -1,0 +1,116 @@
+name: Release
+
+# Durable publish on debian/<full-version> tag push. See "Releasing"
+# in debian/source/README.source for the paired-tag procedure.
+
+on:
+  push:
+    tags:
+      - 'debian/**'
+
+jobs:
+  preflight:
+    name: Verify paired source tag
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      packaging-version: ${{ steps.parse.outputs.packaging }}
+      upstream-version: ${{ steps.parse.outputs.upstream }}
+      upstream-ref: ${{ steps.parse.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Parse packaging tag
+        id: parse
+        run: |
+          PACKAGING="${GITHUB_REF#refs/tags/debian/}"
+          UPSTREAM="${PACKAGING%-*}"
+          UPSTREAM_REF="v${UPSTREAM}"
+          echo "packaging=${PACKAGING}" >> "$GITHUB_OUTPUT"
+          echo "upstream=${UPSTREAM}"   >> "$GITHUB_OUTPUT"
+          echo "ref=${UPSTREAM_REF}"    >> "$GITHUB_OUTPUT"
+          echo "Packaging tag : debian/${PACKAGING}"
+          echo "Upstream ref  : ${UPSTREAM_REF}"
+
+      - name: Verify source tag exists (fail fast)
+        run: |
+          REF="${{ steps.parse.outputs.ref }}"
+          if ! git rev-parse "refs/tags/${REF}" >/dev/null 2>&1; then
+            echo "::error::Source tag '${REF}' does not exist on this repo."
+            echo "::error::Tag the source on the kurokesu branch with this name (revision-less),"
+            echo "::error::push it, then re-push the packaging tag to trigger this workflow."
+            exit 1
+          fi
+          echo "OK: source tag ${REF} -> $(git rev-parse "refs/tags/${REF}")"
+
+  build:
+    needs: preflight
+    name: ${{ matrix.suite }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: trixie
+            profiles: nodoc
+          - suite: bookworm
+            profiles: pkg.libcamera.nonn,pkg.libcamera.noqt,nodoc
+    uses: ./.github/workflows/_build.yml
+    with:
+      suite: ${{ matrix.suite }}
+      profiles: ${{ matrix.profiles }}
+      source-repo: ${{ github.repository }}
+      package-name: libcamera
+      upstream-ref: ${{ needs.preflight.outputs.upstream-ref }}
+
+  release:
+    needs: [preflight, build]
+    name: Publish GitHub Release
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Flatten artifact tree (publish .deb + .changes + .buildinfo)
+        id: stage
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \
+            \( -name '*.deb' -o -name '*.changes' -o -name '*.buildinfo' \) \
+            -exec cp -v {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Idempotent: a re-run after a flaky publish updates the
+          # existing release instead of failing on "already exists".
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber \
+              release-assets/*
+            exit 0
+          fi
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "libcamera ${{ needs.preflight.outputs.packaging-version }}" \
+            --notes "$(cat <<EOF
+          Debian \`.deb\` set for libcamera ${{ needs.preflight.outputs.packaging-version }}.
+
+          Built suites: trixie, bookworm (arm64).
+          Source ref: \`${{ needs.preflight.outputs.upstream-ref }}\`.
+
+          Install (download all .deb files for your suite, then):
+
+          \`\`\`
+          sudo apt install ./libcamera*.deb
+          \`\`\`
+          EOF
+          )" \
+            release-assets/*

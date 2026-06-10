@@ -146,7 +146,7 @@ jobs:
       - name: Upload .deb set + build metadata
         # Run even on build failure so the .build log is preserved.
         if: always() && steps.version.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # sbuild drops every output in the parent of the source tree,
           # which here is ${{ github.workspace }}.

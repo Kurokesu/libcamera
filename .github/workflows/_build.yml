@@ -101,8 +101,12 @@ jobs:
         run: |
           PKG="${{ inputs.package-name }}"
           UPSTREAM="${{ steps.version.outputs.upstream }}"
+          # gen-version.sh picks this up so the runtime version banner
+          # reports the full version instead of the bare project version.
+          echo "${UPSTREAM}" > .tarball-version
           git archive --format=tar \
             --prefix="${PKG}-${UPSTREAM}/" \
+            --add-file=.tarball-version \
             HEAD \
             | xz -T0 > "${GITHUB_WORKSPACE}/${PKG}_${UPSTREAM}.orig.tar.xz"
           ls -la "${GITHUB_WORKSPACE}/${PKG}_${UPSTREAM}.orig.tar.xz"

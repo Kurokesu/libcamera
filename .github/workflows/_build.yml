@@ -1,0 +1,167 @@
+name: Build .deb (reusable)
+
+# Builds the .deb set in an unprivileged sbuild chroot with the RPi
+# apt archive layered in. Called by ci.yml and release.yml.
+
+on:
+  workflow_call:
+    inputs:
+      suite:
+        description: Debian suite to build for (trixie, bookworm)
+        type: string
+        required: true
+      profiles:
+        description: Comma-separated dpkg build profiles (DEB_BUILD_PROFILES)
+        type: string
+        required: true
+      source-repo:
+        description: owner/repo to fetch the upstream source from
+        type: string
+        required: true
+      package-name:
+        description: Source package name (used for orig.tar.xz naming)
+        type: string
+        required: true
+      upstream-ref:
+        description: Git ref for the upstream source checkout (branch or tag)
+        type: string
+        default: kurokesu
+
+jobs:
+  build:
+    name: sbuild
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - name: Checkout recipe (debian/)
+        uses: actions/checkout@v6
+        with:
+          path: recipe
+
+      - name: Checkout upstream source
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.source-repo }}
+          ref: ${{ inputs.upstream-ref }}
+          path: upstream
+
+      - name: Install build tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            sbuild mmdebstrap uidmap \
+            dpkg-dev devscripts \
+            debian-archive-keyring \
+            ca-certificates xz-utils zstd
+
+      - name: Use pinned Debian archive keyring
+        # Ubuntu's debian-archive-keyring lags Debian's key rotation
+        # and cannot verify current InRelease files. The path is also
+        # valid inside the chroot, where the suite's own
+        # debian-archive-keyring package provides it.
+        run: |
+          sudo cp .github/keys/debian-archive-keyring.gpg \
+            /usr/share/keyrings/debian-archive-keyring.gpg
+        working-directory: recipe
+
+      - name: Configure sbuild for unshare backend
+        run: |
+          mkdir -p ~/.cache/sbuild
+          cat > ~/.sbuildrc <<'EOF'
+          $chroot_mode = 'unshare';
+          $unshare_bind_mounts = [];
+          1;
+          EOF
+
+      - name: Create chroot tarball (${{ inputs.suite }}-arm64)
+        # The signed-by path stays valid inside the chroot through
+        # its own debian-archive-keyring package.
+        run: |
+          mmdebstrap \
+            --variant=buildd \
+            --architectures=arm64 \
+            --include=ca-certificates,debian-archive-keyring \
+            "${{ inputs.suite }}" \
+            ~/.cache/sbuild/"${{ inputs.suite }}"-arm64.tar.zst \
+            "deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://deb.debian.org/debian ${{ inputs.suite }} main"
+
+      - name: Compute upstream + packaging versions from changelog
+        id: version
+        working-directory: recipe
+        run: |
+          PACKAGING=$(dpkg-parsechangelog -SVersion)
+          UPSTREAM=${PACKAGING%-*}
+          echo "packaging=${PACKAGING}" >> "$GITHUB_OUTPUT"
+          echo "upstream=${UPSTREAM}"   >> "$GITHUB_OUTPUT"
+          echo "Packaging version: ${PACKAGING}"
+          echo "Upstream version:  ${UPSTREAM}"
+
+      - name: Generate orig tarball from upstream ref
+        working-directory: upstream
+        run: |
+          PKG="${{ inputs.package-name }}"
+          UPSTREAM="${{ steps.version.outputs.upstream }}"
+          # gen-version.sh picks this up so the runtime version banner
+          # reports the full version instead of the bare project version.
+          echo "${UPSTREAM}" > .tarball-version
+          git archive --format=tar \
+            --prefix="${PKG}-${UPSTREAM}/" \
+            --add-file=.tarball-version \
+            HEAD \
+            | xz -T0 > "${GITHUB_WORKSPACE}/${PKG}_${UPSTREAM}.orig.tar.xz"
+          ls -la "${GITHUB_WORKSPACE}/${PKG}_${UPSTREAM}.orig.tar.xz"
+
+      - name: Stage source tree (orig + debian/)
+        run: |
+          PKG="${{ inputs.package-name }}"
+          UPSTREAM="${{ steps.version.outputs.upstream }}"
+          cd "${GITHUB_WORKSPACE}"
+          tar xf "${PKG}_${UPSTREAM}.orig.tar.xz"
+          cp -r recipe/debian "${PKG}-${UPSTREAM}/"
+
+      - name: Build with sbuild
+        run: |
+          PKG="${{ inputs.package-name }}"
+          UPSTREAM="${{ steps.version.outputs.upstream }}"
+          cd "${GITHUB_WORKSPACE}/${PKG}-${UPSTREAM}"
+          sbuild \
+            -d "${{ inputs.suite }}" \
+            --arch=arm64 \
+            --profiles="${{ inputs.profiles }}" \
+            --extra-repository="deb http://archive.raspberrypi.com/debian/ ${{ inputs.suite }} main" \
+            --extra-repository-key="${GITHUB_WORKSPACE}/recipe/.github/keys/raspberrypi-archive-keyring.gpg" \
+            --no-clean-source
+
+      - name: Sanitize sbuild log filename
+        # sbuild's timestamped log name contains colons, which
+        # actions/upload-artifact rejects. Keep the log under its
+        # stable colon-free symlink name.
+        if: always() && steps.version.outcome == 'success'
+        run: |
+          cd "${GITHUB_WORKSPACE}"
+          for f in *.build; do
+            if [ -L "$f" ]; then
+              target=$(readlink "$f")
+              rm "$f"
+              mv "$target" "$f"
+            fi
+          done
+
+      - name: Upload .deb set + build metadata
+        # Run even on build failure so the .build log is preserved.
+        if: always() && steps.version.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          # sbuild drops every output in the parent of the source tree,
+          # which here is ${{ github.workspace }}.
+          name: ${{ inputs.package-name }}-${{ steps.version.outputs.packaging }}-${{ inputs.suite }}-arm64
+          path: |
+            ${{ github.workspace }}/*.deb
+            ${{ github.workspace }}/*.changes
+            ${{ github.workspace }}/*.buildinfo
+            ${{ github.workspace }}/*.build
+            ${{ github.workspace }}/*.dsc
+            ${{ github.workspace }}/*.debian.tar.*
+            ${{ github.workspace }}/*.orig.tar.*
+          if-no-files-found: warn
+          retention-days: 30

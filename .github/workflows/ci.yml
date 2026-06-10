@@ -5,15 +5,12 @@ name: CI
 
 on:
   push:
-    branches:
-      - 'debian/**'
+    branches: [debian/latest]
   pull_request:
-    branches:
-      - debian/latest
+    branches: [debian/latest]
   workflow_dispatch:
 
-# Rapid successive pushes supersede each other; only the newest
-# ref state is worth a full ~30 min matrix build.
+# Only the newest ref state is worth a full ~30 min matrix build.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

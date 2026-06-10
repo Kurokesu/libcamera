@@ -5,8 +5,7 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'debian/**'
+    tags: ['debian/**']
 
 jobs:
   preflight:

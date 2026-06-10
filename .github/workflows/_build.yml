@@ -29,7 +29,7 @@ on:
 
 jobs:
   build:
-    name: ${{ inputs.suite }}
+    name: sbuild
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
@@ -55,11 +55,10 @@ jobs:
             ca-certificates xz-utils zstd
 
       - name: Use pinned Debian archive keyring
-        # Ubuntu's debian-archive-keyring lags Debian's key rotation and
-        # cannot verify current InRelease files; replace it with the
-        # pinned copy so mmdebstrap's signed-by detection finds keys
-        # that actually work. The path is also valid inside the chroot
-        # (its own debian-archive-keyring package provides it there).
+        # Ubuntu's debian-archive-keyring lags Debian's key rotation
+        # and cannot verify current InRelease files. The path is also
+        # valid inside the chroot, where the suite's own
+        # debian-archive-keyring package provides it.
         run: |
           sudo cp .github/keys/debian-archive-keyring.gpg \
             /usr/share/keyrings/debian-archive-keyring.gpg

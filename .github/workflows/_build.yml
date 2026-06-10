@@ -34,12 +34,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout recipe (debian/)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: recipe
 
       - name: Checkout upstream source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.source-repo }}
           ref: ${{ inputs.upstream-ref }}
@@ -53,6 +53,17 @@ jobs:
             dpkg-dev devscripts \
             debian-archive-keyring \
             ca-certificates xz-utils zstd
+
+      - name: Use pinned Debian archive keyring
+        # Ubuntu's debian-archive-keyring lags Debian's key rotation and
+        # cannot verify current InRelease files; replace it with the
+        # pinned copy so mmdebstrap's signed-by detection finds keys
+        # that actually work. The path is also valid inside the chroot
+        # (its own debian-archive-keyring package provides it there).
+        run: |
+          sudo cp .github/keys/debian-archive-keyring.gpg \
+            /usr/share/keyrings/debian-archive-keyring.gpg
+        working-directory: recipe
 
       - name: Configure sbuild for unshare backend
         run: |

@@ -162,11 +162,14 @@ jobs:
           UPSTREAM="${{ steps.version.outputs.upstream }}"
           SUFFIX="${{ inputs.version-suffix }}"
           cd "${GITHUB_WORKSPACE}/${PKG}-${UPSTREAM}"
+          # Appending a suffix edits the changelog copy, and sbuild
+          # requires an attribution for that entry.
+          MAINT=$(dpkg-parsechangelog -SMaintainer)
           sbuild \
             -d "${{ inputs.suite }}" \
             --arch=arm64 \
             --profiles="${{ inputs.profiles }}" \
-            ${SUFFIX:+--append-to-version="${SUFFIX}"} \
+            ${SUFFIX:+--append-to-version="${SUFFIX}" --maintainer="${MAINT}"} \
             --extra-repository="deb http://archive.raspberrypi.com/debian/ ${{ inputs.suite }} main" \
             --extra-repository-key="${GITHUB_WORKSPACE}/recipe/.github/keys/raspberrypi-archive-keyring.gpg" \
             --no-clean-source

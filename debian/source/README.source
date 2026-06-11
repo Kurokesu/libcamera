@@ -42,7 +42,7 @@ Identity adaptations
 These define Kurokesu's fork:
 
   * Version scheme: `0.7.1+rpt<date>+krks<N>-<M>`. The `+krks<N>`
-    counter resets on each RPi resync; `-<M>` is the Debian packaging
+    counter resets on each RPi resync. `-<M>` is the Debian packaging
     revision.
     Retire when: never (defines the fork).
   * `Maintainer`, `Uploaders`, `Vcs-*`, `watch`, `gbp.conf` repointed
@@ -66,7 +66,7 @@ noqt wired through d/rules
 
 python3-packaging <!nocheck>
   Why:         test/v4l2_compat/v4l2_compat_test.py imports
-               `from packaging import version`; that module is not
+               `from packaging import version`. That module is not
                in bookworm's build chroot, so the test errored out
                instead of reaching its normal "no devices" skip.
   Retire when: RPi adds the build-dep upstream, or bookworm dropped.
@@ -80,12 +80,12 @@ Seed
       1. Replace `debian/` wholesale with the new seed's contents.
       2. Run `quilt push -a` against the merged source to verify our
          patches still apply (RPi refreshes patches between syncs and
-         our merges may collide; refresh or replace any failures).
+         our merges may collide - refresh or replace any failures).
       3. Reapply this file's deviations.
       4. Update the "Last seed" SHA above in the same commit as the
          reseed.
       5. Bump `+krks<N>` and `-<M>` per project versioning rules
-         (see project plan; not restated here).
+         (see project plan, not restated here).
       6. Prepend a new `debian/changelog` entry summarizing what the
          reseed brings in.
       7. Build on every supported suite (see "Supported suites").
@@ -100,18 +100,31 @@ Releases are paired tags:
   * `debian/latest` is tagged with `debian/<full-version>` - carries
     the Debian revision, e.g. `debian/0.7.1+rpt20260429+krks1-1`.
 
-The source tag is reused across packaging-only rebuilds (`-1`,
-`-2`, `-3` against the same `kurokesu` tag); only the packaging tag
-moves.
+Packaging-only rebuilds (`-2`, `-3`) reuse the source tag - only
+the packaging tag moves.
 
-To release:
+To release, run `./release.sh` from this branch (use `--dry-run` to
+preview). It derives both tag names from `debian/changelog` on the
+remote packaging tip, reuses the source tag on packaging-only
+rebuilds and pushes both tags atomically. The packaging-tag push
+triggers `.github/workflows/release.yml`.
+
+Manual equivalent (what the script automates):
 
   1. Tag the source on `kurokesu` with `v<upstream-version>`.
   2. Tag this branch with `debian/<full-version>`.
-  3. Push both tags. The packaging-tag push triggers
-     `.github/workflows/release.yml`, which fails fast if the source
-     tag is missing, then builds every supported suite and publishes
-     a GitHub Release with the `.deb` set attached.
+  3. Push both tags.
+
+Release assets: per-suite tarballs (runtime debs plus that build's
+`.changes`/`.buildinfo`) and `SHA256SUMS`. dbgsym debs and the
+source package stay in workflow artifacts only, so `.changes`
+entries for dbgsym files have no matching file in the tarball.
+
+Bookworm binaries carry a `~bpo12+1` version suffix appended at
+build time (Debian backports convention, matching RPi's own archive
+practice). This keeps deb filenames unique across suites in a shared
+APT pool and makes a bookworm-to-trixie OS upgrade prefer the trixie
+build. The changelog, tags and orig tarball stay suite-free.
 
 Editing rule
 ------------

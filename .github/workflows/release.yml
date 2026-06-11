@@ -44,6 +44,21 @@ jobs:
           fi
           echo "OK: source tag ${REF} -> $(git rev-parse "refs/tags/${REF}")"
 
+      - name: Verify tag matches debian/changelog
+        # Guards hand-made tags (release.sh tags always match). The
+        # checkout on a tag push is the tagged commit.
+        run: |
+          command -v dpkg-parsechangelog >/dev/null \
+            || sudo apt-get install -y --no-install-recommends dpkg-dev
+          CHANGELOG=$(dpkg-parsechangelog -SVersion)
+          TAG="${{ steps.parse.outputs.packaging }}"
+          if [ "${CHANGELOG}" != "${TAG}" ]; then
+            echo "::error::Packaging tag says '${TAG}' but debian/changelog at the tagged commit says '${CHANGELOG}'."
+            echo "::error::Use release.sh, or retag the commit whose changelog matches."
+            exit 1
+          fi
+          echo "OK: tag matches changelog (${CHANGELOG})"
+
   build:
     needs: preflight
     name: ${{ matrix.suite }}
@@ -53,8 +68,10 @@ jobs:
         include:
           - suite: trixie
             profiles: nodoc
+            version-suffix: ''
           - suite: bookworm
             profiles: pkg.libcamera.nonn,pkg.libcamera.noqt,nodoc
+            version-suffix: '~bpo12+1'
     uses: ./.github/workflows/_build.yml
     with:
       suite: ${{ matrix.suite }}
@@ -62,6 +79,7 @@ jobs:
       source-repo: ${{ github.repository }}
       package-name: libcamera
       upstream-ref: ${{ needs.preflight.outputs.upstream-ref }}
+      version-suffix: ${{ matrix.version-suffix }}
 
   release:
     needs: [preflight, build]
@@ -75,15 +93,16 @@ jobs:
           path: artifacts/
 
       - name: Bundle assets per suite
-        # Suites produce identically named files, so they ship as one
-        # tarball per suite instead of a flat (colliding) file list.
         run: |
           mkdir -p release-assets
           for dir in artifacts/*/; do
             name=$(basename "$dir")
-            tar -C "$dir" -czf "release-assets/${name}.tar.gz" .
+            files=$(cd "$dir" && ls -- *.deb *.changes *.buildinfo | grep -v dbgsym)
+            tar -C "$dir" -czf "release-assets/${name}.tar.gz" $files
           done
-          ls -la release-assets/
+          cd release-assets
+          sha256sum -- *.tar.gz > SHA256SUMS
+          ls -la
 
       - name: Create or update GitHub Release
         env:
@@ -102,20 +121,10 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "libcamera ${{ needs.preflight.outputs.packaging-version }}" \
             --notes "$(cat <<EOF
-          Debian \`.deb\` set for libcamera ${{ needs.preflight.outputs.packaging-version }}.
+          Kurokesu's \`libcamera\` fork adding pipeline and IPA support
+          for Kurokesu cameras.
 
-          Built suites: trixie, bookworm (arm64). One tarball per
-          suite, containing the binary packages, debug symbols, build
-          log and source package.
-          Source ref: \`${{ needs.preflight.outputs.upstream-ref }}\`.
-
-          Install (download the tarball for your suite, then):
-
-          \`\`\`
-          tar xf libcamera-*-arm64.tar.gz
-          rm -f *dbgsym*.deb
-          sudo apt install ./*.deb
-          \`\`\`
+          Source ref: \`${{ needs.preflight.outputs.upstream-ref }}\`
           EOF
           )" \
             release-assets/*

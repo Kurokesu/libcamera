@@ -26,6 +26,10 @@ on:
         description: Git ref for the upstream source checkout (branch or tag)
         type: string
         default: kurokesu
+      version-suffix:
+        description: Suffix appended to the binary version at build time (e.g. ~bpo12+1)
+        type: string
+        default: ''
 
 jobs:
   build:
@@ -91,6 +95,8 @@ jobs:
         run: |
           PACKAGING=$(dpkg-parsechangelog -SVersion)
           UPSTREAM=${PACKAGING%-*}
+          # Upstream version (and orig tarball) stays shared.
+          PACKAGING="${PACKAGING}${{ inputs.version-suffix }}"
           echo "packaging=${PACKAGING}" >> "$GITHUB_OUTPUT"
           echo "upstream=${UPSTREAM}"   >> "$GITHUB_OUTPUT"
           echo "Packaging version: ${PACKAGING}"
@@ -123,11 +129,16 @@ jobs:
         run: |
           PKG="${{ inputs.package-name }}"
           UPSTREAM="${{ steps.version.outputs.upstream }}"
+          SUFFIX="${{ inputs.version-suffix }}"
           cd "${GITHUB_WORKSPACE}/${PKG}-${UPSTREAM}"
+          # Appending a suffix edits the changelog copy, and sbuild
+          # requires an attribution for that entry.
+          MAINT=$(dpkg-parsechangelog -SMaintainer)
           sbuild \
             -d "${{ inputs.suite }}" \
             --arch=arm64 \
             --profiles="${{ inputs.profiles }}" \
+            ${SUFFIX:+--append-to-version="${SUFFIX}" --maintainer="${MAINT}"} \
             --extra-repository="deb http://archive.raspberrypi.com/debian/ ${{ inputs.suite }} main" \
             --extra-repository-key="${GITHUB_WORKSPACE}/recipe/.github/keys/raspberrypi-archive-keyring.gpg" \
             --no-clean-source

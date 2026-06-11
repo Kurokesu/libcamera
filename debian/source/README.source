@@ -118,8 +118,7 @@ Manual equivalent (what the script automates):
 Release assets: per-suite tarballs (runtime debs plus that build's
 `.changes`/`.buildinfo`) and `SHA256SUMS`. dbgsym debs and the
 source package stay in workflow artifacts only, so `.changes`
-entries for dbgsym files have no matching file in the tarball -
-expected, not a defect.
+entries for dbgsym files have no matching file in the tarball.
 
 Bookworm binaries carry a `~bpo12+1` version suffix appended at
 build time (Debian backports convention, matching RPi's own archive

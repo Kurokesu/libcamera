@@ -90,23 +90,19 @@ jobs:
             | sha256sum | cut -c1-16)
           echo "args=${ARGS}"       >> "$GITHUB_OUTPUT"
           echo "sources=${SOURCES}" >> "$GITHUB_OUTPUT"
-          echo "prefix=${{ inputs.suite }}-arm64-${HASH}" >> "$GITHUB_OUTPUT"
           echo "key=${{ inputs.suite }}-arm64-${HASH}-$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
 
       - name: Restore cached chroot tarball
         id: chroot-cache
-        # On month rollover restore-keys reuses the previous chroot
-        # and sbuild dist-upgrades the delta in-session.
         uses: actions/cache@v5
         with:
           path: ~/.cache/sbuild/${{ inputs.suite }}-arm64.tar.zst
           key: ${{ steps.chroot-key.outputs.key }}
-          restore-keys: ${{ steps.chroot-key.outputs.prefix }}-
 
       - name: Create chroot tarball (${{ inputs.suite }}-arm64)
         # The signed-by path stays valid inside the chroot through
         # its own debian-archive-keyring package.
-        if: steps.chroot-cache.outputs.cache-matched-key == ''
+        if: steps.chroot-cache.outputs.cache-hit != 'true'
         run: |
           mmdebstrap \
             ${{ steps.chroot-key.outputs.args }} \

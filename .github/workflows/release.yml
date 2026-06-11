@@ -93,25 +93,16 @@ jobs:
           path: artifacts/
 
       - name: Bundle assets per suite
-        # Two assets per suite: runtime debs to install, debug bundle
-        # with dbgsym and build/source metadata (see "Releasing" in
-        # debian/source/README.source). Complement-based partition so
-        # no file can silently drop out of both bundles.
         run: |
           mkdir -p release-assets
           for dir in artifacts/*/; do
             name=$(basename "$dir")
-            runtime=$(cd "$dir" && ls -- *.deb | grep -v dbgsym)
-            debug=$(cd "$dir" && ls | grep -vxF "$runtime")
-            total=$(ls "$dir" | wc -l)
-            if [ $(( $(echo "$runtime" | wc -l) + $(echo "$debug" | wc -l) )) -ne "$total" ]; then
-              echo "::error::Bundle partition for ${name} does not cover all files."
-              exit 1
-            fi
-            tar -C "$dir" -czf "release-assets/${name}.tar.gz" $runtime
-            tar -C "$dir" -czf "release-assets/${name}-debug.tar.gz" $debug
+            files=$(cd "$dir" && ls -- *.deb *.changes *.buildinfo | grep -v dbgsym)
+            tar -C "$dir" -czf "release-assets/${name}.tar.gz" $files
           done
-          ls -la release-assets/
+          cd release-assets
+          sha256sum -- *.tar.gz > SHA256SUMS
+          ls -la
 
       - name: Create or update GitHub Release
         env:
@@ -130,20 +121,10 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "libcamera ${{ needs.preflight.outputs.packaging-version }}" \
             --notes "$(cat <<EOF
-          Debian \`.deb\` set for libcamera ${{ needs.preflight.outputs.packaging-version }}.
+          Kurokesu's \`libcamera\` fork adding pipeline and IPA support
+          for Kurokesu cameras.
 
-          Built suites: trixie, bookworm (arm64). Two assets per
-          suite: \`...-arm64.tar.gz\` holds the installable packages
-          (most users need only this one); \`...-debug.tar.gz\` holds
-          debug symbols and build/source metadata.
-          Source ref: \`${{ needs.preflight.outputs.upstream-ref }}\`.
-
-          Install (download the runtime tarball for your suite, then):
-
-          \`\`\`
-          tar xf libcamera-*-arm64.tar.gz
-          sudo apt install ./*.deb
-          \`\`\`
+          Source ref: \`${{ needs.preflight.outputs.upstream-ref }}\`
           EOF
           )" \
             release-assets/*

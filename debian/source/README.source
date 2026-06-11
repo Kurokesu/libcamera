@@ -115,22 +115,17 @@ Manual equivalent (what the script automates):
   2. Tag this branch with `debian/<full-version>`.
   3. Push both tags.
 
-Each release carries two assets per suite:
-
-  * `libcamera-<full-version>-<suite>-arm64.tar.gz` - the
-    installable runtime `.deb` set. Most users need only this one.
-  * `libcamera-<full-version>-<suite>-arm64-debug.tar.gz` - dbgsym
-    packages (the only build-id match for the released binaries),
-    `.changes`/`.buildinfo`, the sbuild log and the source package.
+Release assets: per-suite tarballs (runtime debs plus that build's
+`.changes`/`.buildinfo`) and `SHA256SUMS`. dbgsym debs and the
+source package stay in workflow artifacts only, so `.changes`
+entries for dbgsym files have no matching file in the tarball -
+expected, not a defect.
 
 Bookworm binaries carry a `~bpo12+1` version suffix appended at
 build time (Debian backports convention, matching RPi's own archive
 practice). This keeps deb filenames unique across suites in a shared
 APT pool and makes a bookworm-to-trixie OS upgrade prefer the trixie
-build. The changelog, tags and orig tarball stay suite-free. The
-bookworm debug bundle therefore pairs an unsuffixed source package
-with suffixed binaries (binNMU-style, recorded in `.changes` -
-expected, not a bug).
+build. The changelog, tags and orig tarball stay suite-free.
 
 Editing rule
 ------------

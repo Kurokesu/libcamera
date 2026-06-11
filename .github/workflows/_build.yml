@@ -77,38 +77,17 @@ jobs:
           1;
           EOF
 
-      - name: Compute chroot cache key
-        id: chroot-key
-        working-directory: recipe
-        # Hash = exact mmdebstrap invocation + pinned keyring, so any
-        # change invalidates the cache immediately.
-        run: |
-          ARGS="--variant=buildd --architectures=arm64 --include=ca-certificates,debian-archive-keyring"
-          SOURCES="deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://deb.debian.org/debian ${{ inputs.suite }} main"
-          HASH=$({ echo "$ARGS"; echo "$SOURCES"; \
-            cat .github/keys/debian-archive-keyring.gpg; } \
-            | sha256sum | cut -c1-16)
-          echo "args=${ARGS}"       >> "$GITHUB_OUTPUT"
-          echo "sources=${SOURCES}" >> "$GITHUB_OUTPUT"
-          echo "key=${{ inputs.suite }}-arm64-${HASH}-$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore cached chroot tarball
-        id: chroot-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/sbuild/${{ inputs.suite }}-arm64.tar.zst
-          key: ${{ steps.chroot-key.outputs.key }}
-
       - name: Create chroot tarball (${{ inputs.suite }}-arm64)
         # The signed-by path stays valid inside the chroot through
         # its own debian-archive-keyring package.
-        if: steps.chroot-cache.outputs.cache-hit != 'true'
         run: |
           mmdebstrap \
-            ${{ steps.chroot-key.outputs.args }} \
+            --variant=buildd \
+            --architectures=arm64 \
+            --include=ca-certificates,debian-archive-keyring \
             "${{ inputs.suite }}" \
             ~/.cache/sbuild/"${{ inputs.suite }}"-arm64.tar.zst \
-            "${{ steps.chroot-key.outputs.sources }}"
+            "deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] http://deb.debian.org/debian ${{ inputs.suite }} main"
 
       - name: Compute upstream + packaging versions from changelog
         id: version

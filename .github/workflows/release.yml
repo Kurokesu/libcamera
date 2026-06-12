@@ -7,6 +7,9 @@ on:
   push:
     tags: ['debian/**']
 
+permissions:
+  contents: read
+
 jobs:
   preflight:
     name: Verify paired source tag
@@ -85,13 +88,16 @@ jobs:
       upstream-ref: ${{ needs.preflight.outputs.upstream-ref }}
       version-suffix: ${{ matrix.version-suffix }}
 
-  release:
+  sign:
     needs: [preflight, build]
-    name: Publish GitHub Release
+    name: Bundle and sign
     runs-on: ubuntu-24.04-arm
-    permissions:
-      contents: write
     steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/keys
+
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts/
@@ -122,6 +128,58 @@ jobs:
             || { echo "::error::No tarballs produced."; exit 1; }
           sha256sum -- "${tarballs[@]}" > SHA256SUMS
           ls -la
+
+      - name: Sign SHA256SUMS
+        env:
+          ARCHIVE_GPG_SIGNING_KEY: ${{ secrets.ARCHIVE_GPG_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          GNUPGHOME=$(mktemp -d); export GNUPGHOME
+          VERIFY_HOME=$(mktemp -d)
+          trap 'gpgconf --kill all 2>/dev/null || true; rm -rf "$GNUPGHOME" "$VERIFY_HOME"' EXIT
+
+          # || true: an empty/garbage secret falls through to the
+          # actionable assertion below instead of a bare gpg error.
+          printf '%s' "$ARCHIVE_GPG_SIGNING_KEY" \
+            | gpg --batch --quiet --no-greeting --import || true
+
+          # || KEYIDS="" keeps the error below reachable under pipefail
+          # when the import yielded no secret keys.
+          KEYIDS=$(gpg --list-secret-keys --with-colons 2>/dev/null \
+            | awk -F: '$1=="ssb" && $12~/s/ {print $5}') || KEYIDS=""
+          [ -n "$KEYIDS" ] && [ "$(printf '%s\n' "$KEYIDS" | wc -l)" -eq 1 ] \
+            || { echo "::error::Expected exactly one signing subkey; found: ${KEYIDS:-none}."; exit 1; }
+
+          cd release-assets
+          gpg --batch --yes --quiet --pinentry-mode loopback \
+            --no-auto-key-locate --keyserver-options no-auto-key-retrieve \
+            --local-user "$KEYIDS" \
+            --detach-sign --armor SHA256SUMS
+
+          GNUPGHOME="$VERIFY_HOME" gpg --batch --quiet --import \
+            < "${GITHUB_WORKSPACE}/.github/keys/kurokesu-archive-public.asc"
+          GNUPGHOME="$VERIFY_HOME" gpg --batch --quiet \
+            --verify SHA256SUMS.asc SHA256SUMS
+
+      - name: Upload signed release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-assets
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [preflight, sign]
+    name: Publish GitHub Release
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-assets
+          path: release-assets/
 
       - name: Create or update GitHub Release
         env:

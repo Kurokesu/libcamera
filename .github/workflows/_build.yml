@@ -38,12 +38,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout recipe (debian/)
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: recipe
 
       - name: Checkout upstream source
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: ${{ inputs.source-repo }}
           ref: ${{ inputs.upstream-ref }}
@@ -170,7 +170,7 @@ jobs:
       - name: Upload .deb set + build metadata
         # Run even on build failure so the .build log is preserved.
         if: always() && steps.version.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           # sbuild drops every output in the parent of the source tree,
           # which here is ${{ github.workspace }}.

@@ -24,6 +24,7 @@ jobs:
       - name: Parse packaging tag
         id: parse
         run: |
+          set -euo pipefail
           PACKAGING="${GITHUB_REF#refs/tags/debian/}"
           UPSTREAM="${PACKAGING%-*}"
           UPSTREAM_REF="v${UPSTREAM}"
@@ -35,6 +36,7 @@ jobs:
 
       - name: Verify source tag exists (fail fast)
         run: |
+          set -euo pipefail
           REF="${{ steps.parse.outputs.ref }}"
           if ! git rev-parse "refs/tags/${REF}" >/dev/null 2>&1; then
             echo "::error::Source tag '${REF}' does not exist on this repo."
@@ -48,6 +50,7 @@ jobs:
         # Guards hand-made tags (release.sh tags always match). The
         # checkout on a tag push is the tagged commit.
         run: |
+          set -euo pipefail
           command -v dpkg-parsechangelog >/dev/null \
             || sudo apt-get install -y --no-install-recommends dpkg-dev
           CHANGELOG=$(dpkg-parsechangelog -SVersion)
@@ -94,20 +97,36 @@ jobs:
 
       - name: Bundle assets per suite
         run: |
+          set -euo pipefail
+          shopt -s nullglob
           mkdir -p release-assets
           for dir in artifacts/*/; do
             name=$(basename "$dir")
-            files=$(cd "$dir" && ls -- *.deb *.changes *.buildinfo | grep -v dbgsym)
-            tar -C "$dir" -czf "release-assets/${name}.tar.gz" $files
+            ( cd "$dir"
+              files=( *.deb *.changes *.buildinfo )
+              keep=()
+              for f in "${files[@]}"; do
+                [[ $f == *dbgsym* ]] || keep+=("$f")
+              done
+              [ "${#keep[@]}" -gt 0 ] \
+                || { echo "::error::Nothing to bundle for ${name}."; exit 1; }
+              tar -czf "${GITHUB_WORKSPACE}/release-assets/${name}.tar.gz" \
+                -- "${keep[@]}"
+            )
           done
           cd release-assets
-          sha256sum -- *.tar.gz > SHA256SUMS
+          # Guard the glob: unmatched would make sha256sum read stdin.
+          tarballs=( *.tar.gz )
+          [ "${#tarballs[@]}" -gt 0 ] \
+            || { echo "::error::No tarballs produced."; exit 1; }
+          sha256sum -- "${tarballs[@]}" > SHA256SUMS
           ls -la
 
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           # Idempotent: a re-run after a flaky publish updates the
           # existing release instead of failing on "already exists".
           if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then

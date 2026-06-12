@@ -51,6 +51,7 @@ jobs:
 
       - name: Install build tooling
         run: |
+          set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             sbuild mmdebstrap uidmap \
@@ -64,12 +65,14 @@ jobs:
         # valid inside the chroot, where the suite's own
         # debian-archive-keyring package provides it.
         run: |
+          set -euo pipefail
           sudo cp .github/keys/debian-archive-keyring.gpg \
             /usr/share/keyrings/debian-archive-keyring.gpg
         working-directory: recipe
 
       - name: Configure sbuild for unshare backend
         run: |
+          set -euo pipefail
           mkdir -p ~/.cache/sbuild
           cat > ~/.sbuildrc <<'EOF'
           $chroot_mode = 'unshare';
@@ -81,6 +84,7 @@ jobs:
         # The signed-by path stays valid inside the chroot through
         # its own debian-archive-keyring package.
         run: |
+          set -euo pipefail
           mmdebstrap \
             --variant=buildd \
             --architectures=arm64 \
@@ -93,6 +97,7 @@ jobs:
         id: version
         working-directory: recipe
         run: |
+          set -euo pipefail
           PACKAGING=$(dpkg-parsechangelog -SVersion)
           UPSTREAM=${PACKAGING%-*}
           # Upstream version (and orig tarball) stays shared.
@@ -105,6 +110,7 @@ jobs:
       - name: Generate orig tarball from upstream ref
         working-directory: upstream
         run: |
+          set -euo pipefail
           PKG="${{ inputs.package-name }}"
           UPSTREAM="${{ steps.version.outputs.upstream }}"
           # gen-version.sh picks this up so the runtime version banner
@@ -119,6 +125,7 @@ jobs:
 
       - name: Stage source tree (orig + debian/)
         run: |
+          set -euo pipefail
           PKG="${{ inputs.package-name }}"
           UPSTREAM="${{ steps.version.outputs.upstream }}"
           cd "${GITHUB_WORKSPACE}"
@@ -127,6 +134,7 @@ jobs:
 
       - name: Build with sbuild
         run: |
+          set -euo pipefail
           PKG="${{ inputs.package-name }}"
           UPSTREAM="${{ steps.version.outputs.upstream }}"
           SUFFIX="${{ inputs.version-suffix }}"
@@ -149,6 +157,7 @@ jobs:
         # stable colon-free symlink name.
         if: always() && steps.version.outcome == 'success'
         run: |
+          set -euo pipefail
           cd "${GITHUB_WORKSPACE}"
           for f in *.build; do
             if [ -L "$f" ]; then

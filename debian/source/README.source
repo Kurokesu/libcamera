@@ -116,9 +116,10 @@ Manual equivalent (what the script automates):
   3. Push both tags.
 
 Release assets: per-suite tarballs (runtime debs plus that build's
-`.changes`/`.buildinfo`) and `SHA256SUMS`. dbgsym debs and the
-source package stay in workflow artifacts only, so `.changes`
-entries for dbgsym files have no matching file in the tarball.
+`.changes`/`.buildinfo`), `SHA256SUMS` and `SHA256SUMS.asc`. dbgsym
+debs and the source package stay in workflow artifacts only, so
+`.changes` entries for dbgsym files have no matching file in the
+tarball.
 
 Bookworm binaries carry a `~bpo12+1` version suffix appended at
 build time (Debian backports convention, matching RPi's own archive

@@ -59,18 +59,24 @@ echo "Release:       ${FULL}"
 echo "Source tag:    ${SRC_TAG} -> ${SRC_SHA} (${SRC_NOTE})"
 echo "Packaging tag: ${PKG_TAG} -> ${PKG_SHA} (${REMOTE}/${PKG_BRANCH})"
 
-# Warn (never block) if the packaging tip is not CI-green.
-if command -v python3 >/dev/null 2>&1; then
-	BRANCH_ENC=$(printf %s "$PKG_BRANCH" | sed 's#/#%2F#g')
-	CONCLUSION=$(curl -sf --max-time 10 \
-		"https://api.github.com/repos/${REPO}/actions/runs?branch=${BRANCH_ENC}&per_page=1" \
-		2>/dev/null \
-		| python3 -c 'import json,sys
+# Block unless the packaging tip is CI-green (dry runs only
+# report). An unreachable API blocks too: releasing blind is the
+# same risk as releasing red.
+BRANCH_ENC=$(printf %s "$PKG_BRANCH" | sed 's#/#%2F#g')
+CONCLUSION=$(curl -sf --max-time 10 \
+	"https://api.github.com/repos/${REPO}/actions/runs?branch=${BRANCH_ENC}&per_page=1" \
+	2>/dev/null \
+	| python3 -c 'import json,sys
 r = json.load(sys.stdin)["workflow_runs"]
 print(r[0]["conclusion"] or "in_progress" if r else "none")' \
-		2>/dev/null) || CONCLUSION=unknown
-	if [ "$CONCLUSION" != "success" ]; then
+	2>/dev/null) || CONCLUSION=unknown
+if [ "$CONCLUSION" != "success" ]; then
+	if [ "$DRY" -eq 1 ]; then
 		echo "WARNING: latest CI on ${PKG_BRANCH} is '${CONCLUSION}', not 'success'."
+	else
+		echo "ERROR: latest CI on ${PKG_BRANCH} is '${CONCLUSION}', not 'success'." >&2
+		echo "       Wait for a green run on the packaging tip." >&2
+		exit 1
 	fi
 fi
 

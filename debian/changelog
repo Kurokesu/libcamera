@@ -1,3 +1,13 @@
+libcamera (0.7.1+rpt20260429+krks1-2) trixie; urgency=medium
+
+  * Publish release artifacts to the source tag with skeleton release notes
+  * Use Debian-style filename pattern for release tarballs
+  * Replace ~ with + in release asset names (GitHub rewrites ~ to .)
+  * Add arch input + arch-test to _build.yml (cross-arch foundation)
+  * d/source: Document the new release model in README.source
+
+ -- Danius Kalvaitis <danius@kurokesu.com>  Tue, 16 Jun 2026 09:20:00 +0300
+
 libcamera (0.7.1+rpt20260429+krks1-1) trixie; urgency=medium
 
   * Kurokesu fork of 0.7.1+rpt20260429

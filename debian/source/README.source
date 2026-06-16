@@ -4,7 +4,7 @@ Kurokesu libcamera packaging notes
 This package is a Kurokesu fork of Raspberry Pi's libcamera packaging.
 The recipe lives on a single DEP-14 `debian/latest` branch and reuses
 RPi's recipe verbatim where possible. Deviations are kept minimal,
-profile-driven, and tracked here so they can be retired when no longer
+profile-driven and tracked here so they can be retired when no longer
 needed.
 
 Supported suites
@@ -54,7 +54,7 @@ Build-environment deviations (retirable)
 
 pkg.libcamera.nonn profile
   Why:         bookworm lacks libtensorflow-lite-dev (NN-AWB).
-  Retire when: bookworm dropped, or libtensorflow-lite-dev reaches the
+  Retire when: bookworm dropped or libtensorflow-lite-dev reaches the
                RPi bookworm archive.
 
 noqt wired through d/rules
@@ -69,7 +69,7 @@ python3-packaging <!nocheck>
                `from packaging import version`. That module is not
                in bookworm's build chroot, so the test errored out
                instead of reaching its normal "no devices" skip.
-  Retire when: RPi adds the build-dep upstream, or bookworm dropped.
+  Retire when: RPi adds the build-dep upstream or bookworm dropped.
 
 Seed
 ----
@@ -100,8 +100,8 @@ Releases are paired tags:
   * `debian/latest` is tagged with `debian/<full-version>` - carries
     the Debian revision, e.g. `debian/0.7.1+rpt20260429+krks1-1`.
 
-Packaging-only rebuilds (`-2`, `-3`) reuse the source tag - only
-the packaging tag moves.
+Packaging-only rebuilds (`-2`, `-3`) move only the packaging tag
+and refresh the existing release page.
 
 To release, run `./release.sh` from this branch (use `--dry-run` to
 preview). It derives both tag names from `debian/changelog` on the
@@ -116,11 +116,14 @@ Manual equivalent (what the script automates):
   2. Tag this branch with `debian/<full-version>`.
   3. Push both tags.
 
-Release assets: per-suite tarballs (runtime debs plus that build's
-`.changes`/`.buildinfo`), `SHA256SUMS` and `SHA256SUMS.asc`. dbgsym
-debs and the source package stay in workflow artifacts only, so
-`.changes` entries for dbgsym files have no matching file in the
-tarball.
+New releases ship as pre-releases with skeleton notes. Fill the
+sections by hand before promoting to Latest.
+
+Release assets per build: a runtime tarball
+`libcamera_<full-version>_<suite>_<arch>.tar.gz` with the debs plus
+the build's `.changes` and `.buildinfo`. Each release also carries
+`SHA256SUMS` and a detached `SHA256SUMS.asc`. dbgsym debs and the
+source package stay in workflow-run artifacts only.
 
 Bookworm binaries carry a `~bpo12+1` version suffix appended at
 build time (Debian backports convention, matching RPi's own archive
@@ -132,6 +135,6 @@ Editing rule
 ------------
 
 Any Kurokesu-specific change to the recipe (e.g. `debian/control`,
-`debian/rules`, `debian/patches/`, `debian/*.install`, or other files
+`debian/rules`, `debian/patches/`, `debian/*.install` or other files
 under `debian/`) must update the deviations section above in the
 same commit.

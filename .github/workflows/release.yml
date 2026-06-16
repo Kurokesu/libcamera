@@ -61,7 +61,7 @@ jobs:
           TAG="${{ steps.parse.outputs.packaging }}"
           if [ "${CHANGELOG}" != "${TAG}" ]; then
             echo "::error::Packaging tag says '${TAG}' but debian/changelog at the tagged commit says '${CHANGELOG}'."
-            echo "::error::Use release.sh, or retag the commit whose changelog matches."
+            echo "::error::Use release.sh or retag the commit with a matching changelog."
             exit 1
           fi
           echo "OK: tag matches changelog (${CHANGELOG})"
@@ -102,7 +102,7 @@ jobs:
         with:
           path: artifacts/
 
-      - name: Bundle assets per suite
+      - name: Bundle assets
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -186,23 +186,45 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Idempotent: a re-run after a flaky publish updates the
-          # existing release instead of failing on "already exists".
-          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${GITHUB_REF_NAME}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --clobber \
-              release-assets/*
+          TAG="${{ needs.preflight.outputs.upstream-ref }}"
+          PKG_REV="${{ needs.preflight.outputs.packaging-version }}"
+          UPSTREAM="${{ needs.preflight.outputs.upstream-version }}"
+          RPI_TAG="v${UPSTREAM%+krks*}"
+          RPI_URL="https://github.com/raspberrypi/libcamera/releases/tag/${RPI_TAG//+/%2B}"
+
+          # Re-run on the same tag only refreshes assets, leaving
+          # the title, Pre-release flag and any manual notes intact.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --clobber release-assets/*
             exit 0
           fi
-          gh release create "${GITHUB_REF_NAME}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "libcamera ${{ needs.preflight.outputs.packaging-version }}" \
-            --notes "$(cat <<EOF
-          Kurokesu's \`libcamera\` fork adding pipeline and IPA support
-          for Kurokesu cameras.
 
-          Source ref: \`${{ needs.preflight.outputs.upstream-ref }}\`
+          # Skeleton notes for manual fill-in before promoting
+          # from Pre-release to Latest.
+          NOTES=$(cat <<EOF
+          Kurokesu's \`libcamera\` for Raspberry Pi OS
+          Raspberry Pi's [${RPI_TAG}](${RPI_URL}) release with support for Kurokesu cameras integrated on top.
+
+          ### Supported additional sensors
+
+          *On top of upstream Raspberry Pi libcamera's sensor support.*
+
+
+          ### Added on top of the Raspberry Pi base
+
+
+          ### Hardware validated
+
+
+          Ships as a drop-in upgrade: stock Raspberry Pi OS package names at a higher version for Bookworm and Trixie (arm64).
+
+          Packaging revision: \`${PKG_REV}\`
           EOF
-          )" \
+          )
+
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --prerelease \
+            --notes "$NOTES" \
             release-assets/*

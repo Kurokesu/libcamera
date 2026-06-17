@@ -135,8 +135,7 @@ jobs:
         run: |
           set -euo pipefail
           GNUPGHOME=$(mktemp -d); export GNUPGHOME
-          VERIFY_HOME=$(mktemp -d)
-          trap 'gpgconf --kill all 2>/dev/null || true; rm -rf "$GNUPGHOME" "$VERIFY_HOME"' EXIT
+          trap 'gpgconf --kill all 2>/dev/null || true; rm -rf "$GNUPGHOME"' EXIT
 
           # || true: an empty/garbage secret falls through to the
           # actionable assertion below instead of a bare gpg error.
@@ -156,15 +155,8 @@ jobs:
             --local-user "$KEYIDS" \
             --detach-sign --armor SHA256SUMS
 
-          # gpgv against the dearmored public key: no web-of-trust, so no
-          # "key not certified" warning. It only succeeds for a key in this
-          # keyring (same model as apt's signed-by).
-          command -v gpgv >/dev/null \
-            || sudo apt-get install -y --no-install-recommends gpgv
-          gpg --dearmor \
-            < "${GITHUB_WORKSPACE}/.github/keys/kurokesu-archive-public.asc" \
-            > "${VERIFY_HOME}/archive-keyring.gpg"
-          gpgv --keyring "${VERIFY_HOME}/archive-keyring.gpg" \
+          # Independent check that the published keyring validates the signature.
+          gpgv --keyring "${GITHUB_WORKSPACE}/.github/keys/kurokesu-archive-keyring.gpg" \
             SHA256SUMS.asc SHA256SUMS
 
       - name: Upload signed release assets

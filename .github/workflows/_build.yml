@@ -153,13 +153,13 @@ jobs:
           # suffix edits the changelog copy.
           MAINT=$(dpkg-parsechangelog -SMaintainer)
           sbuild \
+            --verbose \
             -d "${{ inputs.suite }}" \
             --arch=${{ inputs.arch }} \
             --profiles="${{ inputs.profiles }}" \
             ${SUFFIX:+--append-to-version="${SUFFIX}" --maintainer="${MAINT}"} \
             --extra-repository="deb http://archive.raspberrypi.com/debian/ ${{ inputs.suite }} main" \
             --extra-repository-key="${GITHUB_WORKSPACE}/recipe/.github/keys/raspberrypi-archive-keyring.gpg" \
-            --verbose \
             --no-clean-source
 
       - name: Sanitize sbuild log filename

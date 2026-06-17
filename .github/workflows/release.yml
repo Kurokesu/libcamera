@@ -156,10 +156,16 @@ jobs:
             --local-user "$KEYIDS" \
             --detach-sign --armor SHA256SUMS
 
-          GNUPGHOME="$VERIFY_HOME" gpg --batch --quiet --import \
-            < "${GITHUB_WORKSPACE}/.github/keys/kurokesu-archive-public.asc"
-          GNUPGHOME="$VERIFY_HOME" gpg --batch --quiet \
-            --verify SHA256SUMS.asc SHA256SUMS
+          # gpgv against the dearmored public key: no web-of-trust, so no
+          # "key not certified" warning. It only succeeds for a key in this
+          # keyring (same model as apt's signed-by).
+          command -v gpgv >/dev/null \
+            || sudo apt-get install -y --no-install-recommends gpgv
+          gpg --dearmor \
+            < "${GITHUB_WORKSPACE}/.github/keys/kurokesu-archive-public.asc" \
+            > "${VERIFY_HOME}/archive-keyring.gpg"
+          gpgv --keyring "${VERIFY_HOME}/archive-keyring.gpg" \
+            SHA256SUMS.asc SHA256SUMS
 
       - name: Upload signed release assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

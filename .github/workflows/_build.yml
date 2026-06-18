@@ -148,16 +148,29 @@ jobs:
           PKG="${{ inputs.package-name }}"
           UPSTREAM="${{ steps.version.outputs.upstream }}"
           SUFFIX="${{ inputs.version-suffix }}"
+          PACKAGING="${{ steps.version.outputs.packaging }}"
           cd "${GITHUB_WORKSPACE}/${PKG}-${UPSTREAM}"
-          # sbuild requires an attribution because appending a
-          # suffix edits the changelog copy.
-          MAINT=$(dpkg-parsechangelog -SMaintainer)
+          # A suffixed suite (bookworm's ~bpo12+1) is a real backport, so
+          # record it as a source-version changelog entry and build normally.
+          # Avoid sbuild --append-to-version, which implies --no-arch-all and
+          # drops arch:all packages (Debian #911399).
+          if [ -n "$SUFFIX" ]; then
+            MAINT=$(dpkg-parsechangelog -SMaintainer)
+            DEBFULLNAME="${MAINT% <*}"
+            DEBEMAIL="${MAINT#*<}"
+            DEBEMAIL="${DEBEMAIL%>}"
+            export DEBFULLNAME DEBEMAIL
+            # ~ sorts below the trixie revision, so dch needs the override.
+            dch --force-bad-version --force-distribution \
+              --newversion "${PACKAGING}" \
+              --distribution "${{ inputs.suite }}" \
+              "Rebuild for ${{ inputs.suite }}."
+          fi
           sbuild \
             --verbose \
             -d "${{ inputs.suite }}" \
             --arch=${{ inputs.arch }} \
             --profiles="${{ inputs.profiles }}" \
-            ${SUFFIX:+--append-to-version="${SUFFIX}" --maintainer="${MAINT}"} \
             --extra-repository="deb http://archive.raspberrypi.com/debian/ ${{ inputs.suite }} main" \
             --extra-repository-key="${GITHUB_WORKSPACE}/recipe/.github/keys/raspberrypi-archive-keyring.gpg" \
             --no-clean-source

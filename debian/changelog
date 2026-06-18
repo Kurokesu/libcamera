@@ -1,3 +1,14 @@
+libcamera (0.7.1+rpt20260429+krks1-3) trixie; urgency=medium
+
+  * Packaging-only rebuild to align the release tooling. No code changes.
+  * Build suffixed suites from a source-version backport changelog entry
+    instead of sbuild --append-to-version (Debian #911399).
+  * Drop the suffix from release asset filenames. The suite token already
+    distinguishes the build, so the + stand-in for ~ is redundant. The
+    .deb keeps ~bpo12+1 internally.
+
+ -- Danius Kalvaitis <danius@kurokesu.com>  Thu, 18 Jun 2026 21:55:00 +0300
+
 libcamera (0.7.1+rpt20260429+krks1-2) trixie; urgency=medium
 
   * Publish release artifacts to the source tag with skeleton release notes

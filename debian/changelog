@@ -1,3 +1,18 @@
+libcamera (1:0.7.1+rpt20260429+krks1-4) trixie; urgency=medium
+
+  * Add an epoch (1:) so Kurokesu's libcamera unconditionally outranks
+    Raspberry Pi's stock build. Our patches sit on a fixed upstream
+    snapshot, so RPi's monotonic +rptYYYYMMDD date eventually overtakes
+    ours; without the epoch apt keeps RPi's newer libcamera as an
+    already-satisfied dependency of rpicam-apps and our camera support is
+    silently dropped. The epoch makes our package the higher version
+    regardless of date.
+  * The epoch is comparison-only. Release tooling keeps it out of asset
+    filenames and git tags (colons are illegal there) and applies it only
+    to the .deb version that apt compares.
+
+ -- Danius Kalvaitis <danius@kurokesu.com>  Fri, 19 Jun 2026 14:17:04 +0300
+
 libcamera (0.7.1+rpt20260429+krks1-3) trixie; urgency=medium
 
   * Packaging-only rebuild to align the release tooling. No code changes.

@@ -41,10 +41,15 @@ Identity adaptations
 
 These define Kurokesu's fork:
 
-  * Version scheme: `0.7.1+rpt<date>+krks<N>-<M>`. The `+krks<N>`
+  * Version scheme: `1:0.7.1+rpt<date>+krks<N>-<M>`. The leading `1:` is
+    a Debian epoch: it makes Kurokesu's libcamera outrank Raspberry Pi's
+    stock build regardless of RPi's `+rpt<date>`, which would otherwise
+    overtake our fixed-snapshot base between releases. The `+krks<N>`
     counter resets on each RPi resync. `-<M>` is the Debian packaging
-    revision.
-    Retire when: never (defines the fork).
+    revision. The epoch is comparison-only: it appears in the changelog
+    and the built .deb but never in git tags or asset filenames.
+    Retire when: never (the epoch is permanent; removing it is itself a
+    downgrade).
   * `Maintainer`, `Uploaders`, `Vcs-*`, `watch`, `gbp.conf` repointed
     to github.com/Kurokesu/libcamera.
     Retire when: never (defines the fork).
@@ -107,6 +112,10 @@ Releases are paired tags:
     e.g. `v0.7.1+rpt20260429+krks1`.
   * `debian/latest` is tagged with `debian/<full-version>` - carries
     the Debian revision, e.g. `debian/0.7.1+rpt20260429+krks1-1`.
+
+Both tag names drop the version epoch (the `1:`): colons are illegal in
+git refs, so `release.sh` strips it. The epoch stays in the changelog
+and the built .deb only.
 
 Packaging-only rebuilds (`-2`, `-3`) move only the packaging tag
 and refresh the existing release page.

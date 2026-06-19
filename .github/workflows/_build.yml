@@ -105,13 +105,18 @@ jobs:
         run: |
           set -euo pipefail
           PACKAGING=$(dpkg-parsechangelog -SVersion)
-          UPSTREAM=${PACKAGING%-*}
+          # An epoch (e.g. 1:) orders apt's version comparison but must never
+          # reach a filename or git ref: upload-artifact rejects the colon and
+          # git refs forbid it. Strip it for the upstream/orig and asset names;
+          # the .deb keeps the epoch via PACKAGING (the version apt sorts on).
+          NOEPOCH=${PACKAGING#*:}
+          UPSTREAM=${NOEPOCH%-*}
           # Upstream version and orig tarball stay shared across suites.
           # The asset filename omits the suffix. The suite token already
           # disambiguates, so it adds nothing while version-suffix stays a
           # static per-suite constant (no bookworm-only ~bpo12+N rebuilds).
-          PACKAGING_FNAME="${PACKAGING}"
-          # The .deb keeps the real ~bpo12+1, which is what apt sorts on.
+          PACKAGING_FNAME="${NOEPOCH}"
+          # The .deb keeps the epoch and the real ~bpo12+1, which apt sorts on.
           PACKAGING="${PACKAGING}${{ inputs.version-suffix }}"
           echo "packaging=${PACKAGING}"             >> "$GITHUB_OUTPUT"
           echo "packaging-fname=${PACKAGING_FNAME}" >> "$GITHUB_OUTPUT"

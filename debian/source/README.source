@@ -52,6 +52,14 @@ These define Kurokesu's fork:
 Build-environment deviations (retirable)
 ----------------------------------------
 
+nodoc profile (all suites)
+  Why:         skips the doxygen/sphinx/TeX doc toolchain (doxygen-latex
+               alone pulls in TeX Live) and the doc-generation pass on
+               every build. The fork does not edit libcamera's docs and
+               the archive does not ship libcamera-doc.
+  Retire when: we start maintaining libcamera doc changes or want to
+               publish libcamera-doc.
+
 pkg.libcamera.nonn profile
   Why:         bookworm lacks libtensorflow-lite-dev (NN-AWB).
   Retire when: bookworm dropped or libtensorflow-lite-dev reaches the

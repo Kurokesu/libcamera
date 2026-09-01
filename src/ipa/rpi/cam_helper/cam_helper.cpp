@@ -79,11 +79,12 @@ Duration CamHelper::exposure(uint32_t exposureLines, const Duration lineLength) 
 	return exposureLines * lineLength;
 }
 
-std::pair<uint32_t, uint32_t> CamHelper::getBlanking(Duration &exposure,
+std::pair<uint32_t, int32_t> CamHelper::getBlanking(Duration &exposure,
 						     Duration minFrameDuration,
 						     Duration maxFrameDuration) const
 {
-	uint32_t frameLengthMin, frameLengthMax, vblank, hblank;
+	int32_t hblank;
+	uint32_t frameLengthMin, frameLengthMax, vblank;
 	Duration lineLength = mode_.minLineLength;
 
 	/*
@@ -131,12 +132,12 @@ std::pair<uint32_t, uint32_t> CamHelper::getBlanking(Duration &exposure,
 	return { vblank, hblank };
 }
 
-Duration CamHelper::hblankToLineLength(uint32_t hblank) const
+Duration CamHelper::hblankToLineLength(int32_t hblank) const
 {
 	return (mode_.width + hblank) * (1.0s / mode_.pixelRate);
 }
 
-uint32_t CamHelper::lineLengthToHblank(const Duration &lineLength) const
+int32_t CamHelper::lineLengthToHblank(const Duration &lineLength) const
 {
 	return (lineLength * mode_.pixelRate / 1.0s) - mode_.width;
 }

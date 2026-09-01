@@ -52,7 +52,7 @@ public:
 	double gain(uint32_t gain_code) const override;
 	void prepare(libcamera::Span<const uint8_t> buffer, Metadata &metadata) override;
 	void process(StatisticsPtr &stats, Metadata &metadata) override;
-	std::pair<uint32_t, uint32_t> getBlanking(Duration &exposure, Duration minFrameDuration,
+	std::pair<uint32_t, int32_t> getBlanking(Duration &exposure, Duration minFrameDuration,
 						  Duration maxFrameDuration) const override;
 	bool sensorEmbeddedDataPresent() const override;
 	double getModeSensitivity(const CameraMode &mode) const override;
@@ -169,7 +169,7 @@ void CamHelperImx708::process(StatisticsPtr &stats, [[maybe_unused]] Metadata &m
 		putAGCStatistics(stats);
 }
 
-std::pair<uint32_t, uint32_t> CamHelperImx708::getBlanking(Duration &exposure,
+std::pair<uint32_t, int32_t> CamHelperImx708::getBlanking(Duration &exposure,
 							   Duration minFrameDuration,
 							   Duration maxFrameDuration) const
 {

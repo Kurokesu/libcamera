@@ -74,15 +74,12 @@ Request::Private::~Private()
  */
 
 /**
+ * \fn Request::Private::hasPendingBuffers()
  * \brief Check if a request has buffers yet to be completed
  *
  * \return True if the request has buffers pending for completion, false
  * otherwise
  */
-bool Request::Private::hasPendingBuffers() const
-{
-	return !pending_.empty();
-}
 
 /**
  * \fn Request::Private::metadata()
@@ -392,8 +389,7 @@ void Request::reuse(ReuseFlag flags)
 	_d()->reset();
 
 	if (flags & ReuseBuffers) {
-		for (auto pair : bufferMap_) {
-			FrameBuffer *buffer = pair.second;
+		for (const auto &[stream, buffer] : bufferMap_) {
 			buffer->_d()->setRequest(this);
 			_d()->pending_.insert(buffer);
 		}
@@ -579,7 +575,7 @@ uint32_t Request::sequence() const
  */
 bool Request::hasPendingBuffers() const
 {
-	return !_d()->pending_.empty();
+	return _d()->hasPendingBuffers();
 }
 
 /**

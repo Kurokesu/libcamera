@@ -51,6 +51,8 @@ file structure:
       measure:
         skip: # non-negative integer, frames to skip initially
         number: # non-negative integer, frames to measure
+      mode: # cpu/gpu
+      threads: # integer >= 1, number of render threads to use, default 2
 
 Configuration file example
 --------------------------
@@ -84,9 +86,11 @@ Configuration file example
        measure:
          skip: 50
          number: 30
+       mode: gpu
+       threads: 2
 
-List of variables and configuration options
--------------------------------------------
+List of environment variables and configuration options
+-------------------------------------------------------
 
 LIBCAMERA_LOG_FILE
    The custom destination for log output.
@@ -139,6 +143,13 @@ LIBCAMERA_<NAME>_TUNING_FILE
 
    Example value: ``/usr/local/share/libcamera/ipa/rpi/vc4/custom_sensor.json``
 
+LIBCAMERA_SOFTISP_MODE, software_isp.mode
+   Select if the software ISP should use GPU or CPU image processsing,
+   one of ``cpu`` or ``gpu``. When set to ``gpu`` and EGL is not available
+   the software ISP will automatically fall back to the CPU.
+
+   Example value: ``gpu``
+
 pipelines.simple.supported_devices.driver, pipelines.simple.supported_devices.software_isp
    Override whether software ISP is enabled for the given driver.
 
@@ -166,6 +177,12 @@ software_isp.measure.skip, software_isp.measure.number
    Example `skip` value: ``50``
 
    Example `number` value: ``30``
+
+software_isp.threads
+   Number of render threads the software ISP uses when using the CPU.
+   This must be between 1 and 8 and the default is 2.
+
+   Example value: ``2``
 
 Further details
 ---------------
@@ -239,7 +256,7 @@ Log categories
 
 Every category represents a specific area of the libcamera codebase,
 the names can be located within the source code, for example:
-`src/libcamera/camera_manager.cpp <https://git.libcamera.org/libcamera/libcamera.git/tree/src/libcamera/camera_manager.cpp#n35>`__
+`src/libcamera/camera_manager.cpp <https://gitlab.freedesktop.org/camera/libcamera/-/blob/master/src/libcamera/camera_manager.cpp#L38>`__
 
 .. code:: cpp
 
@@ -270,7 +287,7 @@ usually contain tuning parameters for the algorithms, in JSON format.
 The ``LIBCAMERA_IPA_CONFIG_PATH`` variable can be used to specify custom
 storage locations to search for those configuration files.
 
-`Examples <https://git.libcamera.org/libcamera/libcamera.git/tree/src/ipa/rpi/vc4/data>`__
+`Examples <https://gitlab.freedesktop.org/camera/libcamera/-/blob/master/src/ipa/rpi/vc4/data>`__
 
 IPA module
 ~~~~~~~~~~

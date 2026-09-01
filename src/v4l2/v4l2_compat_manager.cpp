@@ -54,25 +54,21 @@ V4L2CompatManager::~V4L2CompatManager()
 {
 	files_.clear();
 	mmaps_.clear();
+	proxies_.clear();
 
-	if (cm_) {
-		proxies_.clear();
+	if (cm_)
 		cm_->stop();
-		delete cm_;
-		cm_ = nullptr;
-	}
 }
 
 int V4L2CompatManager::start()
 {
-	cm_ = new CameraManager();
+	cm_ = std::make_unique<CameraManager>();
 
 	int ret = cm_->start();
 	if (ret) {
 		LOG(V4L2Compat, Error) << "Failed to start camera manager: "
 				       << strerror(-ret);
-		delete cm_;
-		cm_ = nullptr;
+		cm_.reset();
 		return ret;
 	}
 
@@ -83,10 +79,8 @@ int V4L2CompatManager::start()
 	 * created here to wrap a camera device.
 	 */
 	auto cameras = cm_->cameras();
-	for (auto [index, camera] : utils::enumerate(cameras)) {
-		V4L2CameraProxy *proxy = new V4L2CameraProxy(index, camera);
-		proxies_.emplace_back(proxy);
-	}
+	for (auto [index, camera] : utils::enumerate(cameras))
+		proxies_.emplace_back(std::make_unique<V4L2CameraProxy>(index, camera));
 
 	return 0;
 }
@@ -123,7 +117,7 @@ int V4L2CompatManager::getCameraIndex(int fd)
 	for (auto [index, camera] : utils::enumerate(cameras)) {
 		Span<const int64_t> devices = camera->properties()
 						      .get(properties::SystemDevices)
-						      .value_or(Span<int64_t>{});
+						      .value_or(utils::defopt);
 
 		/*
 		 * While there may be multiple cameras that could reference the

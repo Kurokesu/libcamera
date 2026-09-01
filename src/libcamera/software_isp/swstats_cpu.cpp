@@ -36,9 +36,9 @@ namespace libcamera {
  */
 
 /**
- * \fn SwStatsCpu::SwStatsCpu(const GlobalConfiguration &configuration)
+ * \fn SwStatsCpu::SwStatsCpu(const CameraManager &cm)
  * \brief Construct a SwStatsCpu object
- * \param[in] configuration Global configuration reference
+ * \param[in] cm The camera manager
  *
  * Creates a SwStatsCpu object and initialises shared memory for statistics
  * exchange.
@@ -74,11 +74,12 @@ namespace libcamera {
  */
 
 /**
- * \fn void SwStatsCpu::processLine0(uint32_t frame, unsigned int y, const uint8_t *src[])
+ * \fn void SwStatsCpu::processLine0(uint32_t frame, unsigned int y, const uint8_t *src[], unsigned int statsBufferIndex = 0)
  * \brief Process line 0
  * \param[in] frame The frame number
- * \param[in] y The y coordinate.
- * \param[in] src The input data.
+ * \param[in] y The y coordinate
+ * \param[in] src The input data
+ * \param[in] statsBufferIndex Index of stats buffer to use for multi-threading
  *
  * This function processes line 0 for input formats with
  * patternSize height == 1.
@@ -97,14 +98,18 @@ namespace libcamera {
  * to the line in plane 0, etc.
  *
  * For non Bayer single plane input data only a single src pointer is required.
+ *
+ * The statsBufferIndex value must be less than the statsBufferCount value passed
+ * to configure().
  */
 
 /**
- * \fn void SwStatsCpu::processLine2(uint32_t frame, unsigned int y, const uint8_t *src[])
+ * \fn void SwStatsCpu::processLine2(uint32_t frame, unsigned int y, const uint8_t *src[], unsigned int statsBufferIndex = 0)
  * \brief Process line 2 and 3
  * \param[in] frame The frame number
- * \param[in] y The y coordinate.
- * \param[in] src The input data.
+ * \param[in] y The y coordinate
+ * \param[in] src The input data
+ * \param[in] statsBufferIndex Index of stats buffer to use for multi-threading
  *
  * This function processes line 2 and 3 for input formats with
  * patternSize height == 4.
@@ -154,8 +159,8 @@ namespace libcamera {
 
 LOG_DEFINE_CATEGORY(SwStatsCpu)
 
-SwStatsCpu::SwStatsCpu(const GlobalConfiguration &configuration)
-	: sharedStats_("softIsp_stats"), bench_(configuration)
+SwStatsCpu::SwStatsCpu(const CameraManager &cm)
+	: sharedStats_("softIsp_stats"), bench_(cm, "CPU stats")
 {
 	if (!sharedStats_)
 		LOG(SwStatsCpu, Error)
@@ -182,14 +187,14 @@ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
 	yVal = r * kRedYMul;               \
 	yVal += g * kGreenYMul;            \
 	yVal += b * kBlueYMul;             \
-	stats_.yHistogram[yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div))]++;
+	stats.yHistogram[yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div))]++;
 
 #define SWSTATS_FINISH_LINE_STATS() \
-	stats_.sum_.r() += sumR;    \
-	stats_.sum_.g() += sumG;    \
-	stats_.sum_.b() += sumB;
+	stats.sum_.r() += sumR;     \
+	stats.sum_.g() += sumG;     \
+	stats.sum_.b() += sumB;
 
-void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[])
+void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats)
 {
 	const uint8_t *src0 = src[1] + window_.x;
 	const uint8_t *src1 = src[2] + window_.x;
@@ -214,7 +219,7 @@ void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[])
 	SWSTATS_FINISH_LINE_STATS()
 }
 
-void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[])
+void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats)
 {
 	const uint16_t *src0 = (const uint16_t *)src[1] + window_.x;
 	const uint16_t *src1 = (const uint16_t *)src[2] + window_.x;
@@ -240,7 +245,7 @@ void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[])
 	SWSTATS_FINISH_LINE_STATS()
 }
 
-void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[])
+void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[], SwIspStats &stats)
 {
 	const uint16_t *src0 = (const uint16_t *)src[1] + window_.x;
 	const uint16_t *src1 = (const uint16_t *)src[2] + window_.x;
@@ -266,7 +271,7 @@ void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[])
 	SWSTATS_FINISH_LINE_STATS()
 }
 
-void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[])
+void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
 {
 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
@@ -292,7 +297,7 @@ void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[])
 	SWSTATS_FINISH_LINE_STATS()
 }
 
-void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[])
+void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
 {
 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
@@ -318,6 +323,58 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[])
 	SWSTATS_FINISH_LINE_STATS()
 }
 
+void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats)
+{
+	const uint8_t *src0 = src[1] + window_.x * 3 / 2;
+	const uint8_t *src1 = src[2] + window_.x * 3 / 2;
+	const unsigned int widthInBytes = window_.width * 3 / 2;
+
+	SWSTATS_START_LINE_STATS(uint8_t)
+
+	if (swapLines_)
+		std::swap(src0, src1);
+
+	/* x += 6 sample every other 2x2 block */
+	for (unsigned int x = 0; x < widthInBytes; x += 6) {
+		b = src0[x];
+		g = src0[x + 1];
+		g2 = src1[x];
+		r = src1[x + 1];
+
+		g = (g + g2) / 2;
+
+		SWSTATS_ACCUMULATE_LINE_STATS(1)
+	}
+
+	SWSTATS_FINISH_LINE_STATS()
+}
+
+void SwStatsCpu::statsGBRG12PLine0(const uint8_t *src[], SwIspStats &stats)
+{
+	const uint8_t *src0 = src[1] + window_.x * 3 / 2;
+	const uint8_t *src1 = src[2] + window_.x * 3 / 2;
+	const unsigned int widthInBytes = window_.width * 3 / 2;
+
+	SWSTATS_START_LINE_STATS(uint8_t)
+
+	if (swapLines_)
+		std::swap(src0, src1);
+
+	/* x += 6 sample every other 2x2 block */
+	for (unsigned int x = 0; x < widthInBytes; x += 6) {
+		g = src0[x];
+		b = src0[x + 1];
+		r = src1[x];
+		g2 = src1[x + 1];
+
+		g = (g + g2) / 2;
+
+		SWSTATS_ACCUMULATE_LINE_STATS(1)
+	}
+
+	SWSTATS_FINISH_LINE_STATS()
+}
+
 /**
  * \brief Reset state to start statistics gathering for a new frame
  * \param[in] frame The frame number
@@ -332,8 +389,10 @@ void SwStatsCpu::startFrame(uint32_t frame)
 	if (window_.width == 0)
 		LOG(SwStatsCpu, Error) << "Calling startFrame() without setWindow()";
 
-	stats_.sum_ = RGB<uint64_t>({ 0, 0, 0 });
-	stats_.yHistogram.fill(0);
+	for (auto &s : stats_) {
+		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
+		s.yHistogram.fill(0);
+	}
 }
 
 /**
@@ -345,8 +404,21 @@ void SwStatsCpu::startFrame(uint32_t frame)
  */
 void SwStatsCpu::finishFrame(uint32_t frame, uint32_t bufferId)
 {
-	stats_.valid = frame % kStatPerNumFrames == 0;
-	*sharedStats_ = stats_;
+	bool valid = frame % kStatPerNumFrames == 0;
+
+	if (valid) {
+		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
+		sharedStats_->yHistogram.fill(0);
+		for (const auto &s : stats_) {
+			sharedStats_->sum_ += s.sum_;
+			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
+				sharedStats_->yHistogram[j] += s.yHistogram[j];
+		}
+
+		sharedStats_->sum_ >>= sumShift_;
+	}
+
+	sharedStats_->valid = valid;
 	statsReady.emit(frame, bufferId);
 }
 
@@ -389,12 +461,14 @@ int SwStatsCpu::setupStandardBayerOrder(BayerFormat::Order order)
 /**
  * \brief Configure the statistics object for the passed in input format
  * \param[in] inputCfg The input format
+ * \param[in] statsBufferCount number of internal stats buffers to use for multi-threading
  *
  * \return 0 on success, a negative errno value on failure
  */
-int SwStatsCpu::configure(const StreamConfiguration &inputCfg)
+int SwStatsCpu::configure(const StreamConfiguration &inputCfg, unsigned int statsBufferCount)
 {
 	stride_ = inputCfg.stride;
+	stats_.resize(statsBufferCount);
 
 	BayerFormat bayerFormat =
 		BayerFormat::fromPixelFormat(inputCfg.pixelFormat);
@@ -405,34 +479,45 @@ int SwStatsCpu::configure(const StreamConfiguration &inputCfg)
 		switch (bayerFormat.bitDepth) {
 		case 8:
 			stats0_ = &SwStatsCpu::statsBGGR8Line0;
+			sumShift_ = 0;
 			return 0;
 		case 10:
 			stats0_ = &SwStatsCpu::statsBGGR10Line0;
+			sumShift_ = 2;
 			return 0;
 		case 12:
 			stats0_ = &SwStatsCpu::statsBGGR12Line0;
+			sumShift_ = 4;
 			return 0;
 		}
 	}
 
-	if (bayerFormat.bitDepth == 10 &&
+	uint8_t bitDepth = bayerFormat.bitDepth;
+
+	if ((bitDepth == 10 || bitDepth == 12) &&
 	    bayerFormat.packing == BayerFormat::Packing::CSI2) {
+		if (bitDepth == 10)
+			patternSize_.width = 4; /* 5 bytes per *4* pixels */
+		else
+			patternSize_.width = 2; /* 3 bytes for *2* pixels */
+
 		patternSize_.height = 2;
-		patternSize_.width = 4; /* 5 bytes per *4* pixels */
+
 		/* Skip every 3th and 4th line, sample every other 2x2 block */
 		ySkipMask_ = 0x02;
 		xShift_ = 0;
+		sumShift_ = 0;
 		processFrame_ = &SwStatsCpu::processBayerFrame2;
 
 		switch (bayerFormat.order) {
 		case BayerFormat::BGGR:
 		case BayerFormat::GRBG:
-			stats0_ = &SwStatsCpu::statsBGGR10PLine0;
+			stats0_ = (bitDepth == 10) ? &SwStatsCpu::statsBGGR10PLine0 : &SwStatsCpu::statsBGGR12PLine0;
 			swapLines_ = bayerFormat.order == BayerFormat::GRBG;
 			return 0;
 		case BayerFormat::GBRG:
 		case BayerFormat::RGGB:
-			stats0_ = &SwStatsCpu::statsGBRG10PLine0;
+			stats0_ = (bitDepth == 10) ? &SwStatsCpu::statsGBRG10PLine0 : &SwStatsCpu::statsGBRG12PLine0;
 			swapLines_ = bayerFormat.order == BayerFormat::RGGB;
 			return 0;
 		default:
@@ -504,7 +589,7 @@ void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
 		/* linePointers[0] is not used by any stats0_ functions */
 		linePointers[1] = src;
 		linePointers[2] = src + stride_;
-		(this->*stats0_)(linePointers);
+		(this->*stats0_)(linePointers, stats_[0]);
 		src += stride_ * 2;
 	}
 }
@@ -517,7 +602,7 @@ void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
  *
  * This may only be called after a successful setWindow() call.
  */
-void SwStatsCpu::processFrame(uint32_t frame, uint32_t bufferId, FrameBuffer *input)
+void SwStatsCpu::processFrame(uint32_t frame, uint32_t bufferId, MappedFrameBuffer &input)
 {
 	if (frame % kStatPerNumFrames) {
 		finishFrame(frame, bufferId);
@@ -526,14 +611,7 @@ void SwStatsCpu::processFrame(uint32_t frame, uint32_t bufferId, FrameBuffer *in
 
 	bench_.startFrame();
 	startFrame(frame);
-
-	MappedFrameBuffer in(input, MappedFrameBuffer::MapFlag::Read);
-	if (!in.isValid()) {
-		LOG(SwStatsCpu, Error) << "mmap-ing buffer(s) failed";
-		return;
-	}
-
-	(this->*processFrame_)(in);
+	(this->*processFrame_)(input);
 	finishFrame(frame, bufferId);
 	bench_.finishFrame();
 }

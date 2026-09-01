@@ -10,9 +10,16 @@
 #include <libcamera/base/utils.h>
 #include <libcamera/controls.h>
 
+#include <libcamera/ipa/core_ipa_interface.h>
+
 #include "libcamera/internal/bayer_format.h"
 
 #include <libipa/fc_queue.h>
+
+#include "libipa/awb.h"
+#include "libipa/ccm.h"
+#include "libipa/fixedpoint.h"
+#include "libipa/lsc.h"
 
 namespace libcamera {
 
@@ -39,12 +46,12 @@ struct IPAActiveState {
 		struct {
 			uint32_t exposure;
 			double sensorGain;
-			double ispGain;
+			UQ<5, 8> ispGain;
 		} automatic;
 		struct {
 			uint32_t exposure;
 			double sensorGain;
-			double ispGain;
+			UQ<5, 8> ispGain;
 		} manual;
 		bool autoEnabled;
 		uint32_t constraintMode;
@@ -52,23 +59,21 @@ struct IPAActiveState {
 		uint32_t temperatureK;
 	} agc;
 
-	struct {
-		double rGain;
-		double bGain;
-	} awb;
+	ipa::awb::ActiveState awb;
+	ipa::ccm::ActiveState ccm;
+	ipa::lsc::ActiveState lsc;
 };
 
 struct IPAFrameContext : public FrameContext {
 	struct {
 		uint32_t exposure;
 		double sensorGain;
-		double ispGain;
+		UQ<5, 8> ispGain;
 	} agc;
 
-	struct {
-		double rGain;
-		double bGain;
-	} awb;
+	ipa::awb::FrameContext awb;
+	ipa::ccm::FrameContext ccm;
+	ipa::lsc::FrameContext lsc;
 };
 
 struct IPAContext {
@@ -77,6 +82,7 @@ struct IPAContext {
 	{
 	}
 
+	IPACameraSensorInfo sensorInfo;
 	IPASessionConfiguration configuration;
 	IPAActiveState activeState;
 

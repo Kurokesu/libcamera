@@ -15,7 +15,7 @@
 
 #include <libcamera/base/log.h>
 
-#include "libcamera/internal/yaml_parser.h"
+#include "libcamera/internal/value_node.h"
 
 namespace libcamera {
 
@@ -39,12 +39,15 @@ public:
 
 	~Interpolator() = default;
 
-	int readYaml(const libcamera::YamlObject &yaml,
+	int readYaml(const ValueNode &yaml,
 		     const std::string &key_name,
 		     const std::string &value_name)
 	{
 		data_.clear();
 		lastInterpolatedKey_.reset();
+
+		if (yaml.isEmpty())
+			return -ENOENT;
 
 		if (!yaml.isList()) {
 			LOG(Interpolator, Error) << "yaml object must be a list";

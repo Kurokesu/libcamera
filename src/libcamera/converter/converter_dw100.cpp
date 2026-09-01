@@ -15,6 +15,7 @@
 #include <libcamera/stream.h>
 
 #include "libcamera/internal/converter.h"
+#include "libcamera/internal/converter/converter_dw100_vertexmap.h"
 #include "libcamera/internal/converter/converter_v4l2_m2m.h"
 #include "libcamera/internal/media_device.h"
 #include "libcamera/internal/v4l2_videodevice.h"
@@ -97,15 +98,16 @@ ConverterDW100Module::createModule(DeviceEnumerator *enumerator)
  * \sa Dw100VertexMap::setDewarpParams()
  * \return 0 if successful, an error code otherwise
  */
-int ConverterDW100Module::init(const YamlObject &params)
+int ConverterDW100Module::init(const ValueNode &params)
 {
-	DewarpParms dp;
+	Dw100VertexMap::DewarpParams dp;
 
 	auto &cm = params["cm"];
 	auto &coefficients = params["coefficients"];
+	auto &cmNew = params["cmNew"];
 
 	/* If nothing is provided, the dewarper is still functional */
-	if (!cm && !coefficients)
+	if (!cm && !coefficients && !cmNew)
 		return 0;
 
 	if (!cm) {
@@ -126,12 +128,30 @@ int ConverterDW100Module::init(const YamlObject &params)
 		return -EINVAL;
 	}
 
-	const auto coeffs = coefficients.getList<double>();
+	const auto coeffs = coefficients.get<std::vector<double>>();
 	if (!coeffs) {
 		LOG(Converter, Error) << "Dewarp parameters 'coefficients' value is not a list";
 		return -EINVAL;
 	}
-	dp.coeffs = std::move(*coeffs);
+
+	int ret = dp.setCoefficients(*coeffs);
+	if (ret) {
+		LOG(Converter, Error)
+			<< "Dewarp 'coefficients' must have 4, 5, 8 or 12 values";
+		return -EINVAL;
+	}
+
+	if (cmNew) {
+		matrix = cmNew.get<Matrix<double, 3, 3>>();
+		if (!matrix) {
+			LOG(Converter, Error) << "Failed to load 'cmNew' value";
+			return -EINVAL;
+		}
+
+		dp.cmNew = *matrix;
+	} else {
+		dp.cmNew = dp.cm;
+	}
 
 	dewarpParams_ = dp;
 
@@ -142,7 +162,7 @@ int ConverterDW100Module::init(const YamlObject &params)
  * \copydoc libcamera::V4L2M2MConverter::configure
  */
 int ConverterDW100Module::configure(const StreamConfiguration &inputCfg,
-				    const std::vector<std::reference_wrapper<StreamConfiguration>>
+				    const std::vector<std::reference_wrapper<const StreamConfiguration>>
 					    &outputCfgs)
 {
 	int ret;
@@ -163,7 +183,7 @@ int ConverterDW100Module::configure(const StreamConfiguration &inputCfg,
 		vertexMap.setSensorCrop(sensorCrop_);
 
 		if (dewarpParams_)
-			vertexMap.setDewarpParams(dewarpParams_->cm, dewarpParams_->coeffs);
+			vertexMap.setDewarpParams(*dewarpParams_);
 		info.update = true;
 	}
 

@@ -7,8 +7,10 @@
 
 #include "libcamera/internal/software_isp/software_isp.h"
 
-#include <cmath>
+#include <memory>
+#include <optional>
 #include <stdint.h>
+#include <string>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -21,8 +23,8 @@
 #include <libcamera/formats.h>
 #include <libcamera/stream.h>
 
+#include "libcamera/internal/bayer_format.h"
 #include "libcamera/internal/framebuffer.h"
-#include "libcamera/internal/ipa_manager.h"
 #include "libcamera/internal/software_isp/debayer_params.h"
 
 #include "debayer_cpu.h"
@@ -95,9 +97,9 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
 		return;
 	}
 
-	const GlobalConfiguration &configuration = pipe->cameraManager()->_d()->configuration();
+	const CameraManager &cm = *pipe->cameraManager();
 
-	auto stats = std::make_unique<SwStatsCpu>(configuration);
+	auto stats = std::make_unique<SwStatsCpu>(cm);
 	if (!stats->isValid()) {
 		LOG(SoftwareIsp, Error) << "Failed to create SwStatsCpu object";
 		return;
@@ -105,26 +107,36 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
 	stats->statsReady.connect(this, &SoftwareIsp::statsReady);
 
 #if HAVE_DEBAYER_EGL
-	std::optional<std::string> softISPMode = configuration.envOption("LIBCAMERA_SOFTISP_MODE", { "software_isp", "mode" });
+	const GlobalConfiguration &configuration = cm._d()->configuration();
+	std::optional<std::string> softISPMode = configuration.option<std::string>({ "software_isp", "mode" });
 	if (softISPMode) {
 		if (softISPMode != "gpu" && softISPMode != "cpu") {
-			LOG(SoftwareIsp, Error) << "LIBCAMERA_SOFISP_MODE " << softISPMode.value() << " invalid "
-						<< "must be \"cpu\" or \"gpu\"";
+			LOG(SoftwareIsp, Error)
+				<< "Invalid software ISP mode \""
+				<< softISPMode.value()
+				<< "\", must be \"cpu\" or \"gpu\"";
 			return;
 		}
 	}
 
-	if (!softISPMode || softISPMode == "gpu")
-		debayer_ = std::make_unique<DebayerEGL>(std::move(stats), configuration);
+	if (!softISPMode || softISPMode == "gpu") {
+		auto display = eGL::probeDisplay();
+		if (display != EGL_NO_DISPLAY) {
+			debayer_ = std::make_unique<DebayerEGL>(std::move(stats), cm, display);
+		} else {
+			LOG(SoftwareIsp, Info)
+				<< "EGL not available, falling back to CPU debayer";
+		}
+	}
 
 #endif
 	if (!debayer_)
-		debayer_ = std::make_unique<DebayerCpu>(std::move(stats), configuration);
+		debayer_ = std::make_unique<DebayerCpu>(std::move(stats), cm);
 
 	debayer_->inputBufferReady.connect(this, &SoftwareIsp::inputReady);
 	debayer_->outputBufferReady.connect(this, &SoftwareIsp::outputReady);
 
-	ipa_ = IPAManager::createIPA<ipa::soft::IPAProxySoft>(pipe, 0, 0);
+	ipa_ = pipe->createIPA<ipa::soft::IPAProxySoft>(0, 0);
 	if (!ipa_) {
 		LOG(SoftwareIsp, Error)
 			<< "Creating IPA for software ISP failed";
@@ -251,6 +263,19 @@ SoftwareIsp::strideAndFrameSize(const PixelFormat &outputFormat, const Size &siz
 }
 
 /**
+ * Get the preferred input stride in bytes for the given input format and size
+ * \param[in] inputFormat The input format
+ * \param[in] size The input size (width and height in pixels)
+ * \return The preferred input stride in bytes or 0 if there is no preference
+ */
+uint32_t SoftwareIsp::preferredInputStride(const PixelFormat &inputFormat, const Size &size)
+{
+	ASSERT(debayer_);
+
+	return debayer_->preferredInputStride(inputFormat, size);
+}
+
+/**
  * \brief Configure the SoftwareIsp object according to the passed in parameters
  * \param[in] inputCfg The input configuration
  * \param[in] outputCfgs The output configurations
@@ -259,7 +284,7 @@ SoftwareIsp::strideAndFrameSize(const PixelFormat &outputFormat, const Size &siz
  * \return 0 on success, a negative errno on failure
  */
 int SoftwareIsp::configure(const StreamConfiguration &inputCfg,
-			   const std::vector<std::reference_wrapper<StreamConfiguration>> &outputCfgs,
+			   const std::vector<std::reference_wrapper<const StreamConfiguration>> &outputCfgs,
 			   const ipa::soft::IPAConfigInfo &configInfo)
 {
 	ASSERT(ipa_ && debayer_);
@@ -268,7 +293,16 @@ int SoftwareIsp::configure(const StreamConfiguration &inputCfg,
 	if (ret < 0)
 		return ret;
 
-	return debayer_->configure(inputCfg, outputCfgs, ccmEnabled_);
+	ret = debayer_->configure(inputCfg, outputCfgs, ccmEnabled_);
+	if (ret < 0)
+		return ret;
+
+	LOG(SoftwareIsp, Info)
+		<< "Input " << inputCfg.size
+		<< "-" << BayerFormat::fromPixelFormat(inputCfg.pixelFormat)
+		<< " stride " << inputCfg.stride;
+
+	return 0;
 }
 
 /**
@@ -330,8 +364,7 @@ int SoftwareIsp::queueBuffers(uint32_t frame, FrameBuffer *input,
 
 	queuedInputBuffers_.push_back(input);
 
-	for (auto iter = outputs.begin(); iter != outputs.end(); iter++) {
-		FrameBuffer *const buffer = iter->second;
+	for (const auto &[stream, buffer] : outputs) {
 		queuedOutputBuffers_.push_back(buffer);
 		process(frame, input, buffer);
 	}
@@ -374,15 +407,13 @@ void SoftwareIsp::stop()
 	ipa_->stop();
 
 	for (auto buffer : queuedOutputBuffers_) {
-		FrameMetadata &metadata = buffer->_d()->metadata();
-		metadata.status = FrameMetadata::FrameCancelled;
+		buffer->_d()->cancel();
 		outputBufferReady.emit(buffer);
 	}
 	queuedOutputBuffers_.clear();
 
 	for (auto buffer : queuedInputBuffers_) {
-		FrameMetadata &metadata = buffer->_d()->metadata();
-		metadata.status = FrameMetadata::FrameCancelled;
+		buffer->_d()->cancel();
 		inputBufferReady.emit(buffer);
 	}
 	queuedInputBuffers_.clear();

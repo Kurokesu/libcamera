@@ -4,10 +4,10 @@
 
 On Raspberry Pi, `libcamera` and `rpicam-apps` must be rebuilt together. Detailed instructions are available [here](https://www.raspberrypi.com/documentation/computers/camera_software.html#advanced-rpicam-apps), but for convenience, here is a shorter version.
 
-Remove pre-installed `rpicam-apps`:
+Remove pre-installed `rpicam-apps` packages:
 
 ```bash
-sudo apt remove --purge rpicam-apps
+sudo apt remove --purge 'rpicam-apps*' librpicam-app1
 ```
 
 ## libcamera
@@ -105,18 +105,12 @@ Build:
 meson compile -C build
 ```
 
-Install:
+Install and refresh the linker cache:
 
 ```bash
 sudo meson install -C build
+sudo ldconfig
 ```
-
-> [!TIP]
-> This should automatically update `ldconfig` cache. If you have trouble accessing your new build, update manually:
->
-> ```bash
-> sudo ldconfig
-> ```
 
 Verify new binary is used:
 

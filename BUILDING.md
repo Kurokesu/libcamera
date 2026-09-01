@@ -63,6 +63,7 @@ Install dependencies:
 sudo apt install -y cmake libboost-program-options-dev libdrm-dev libexif-dev
 sudo apt install -y libavcodec-dev libavdevice-dev libavformat-dev libswresample-dev
 sudo apt install -y libepoxy-dev libpng-dev
+sudo apt install -y libwayland-dev wayland-protocols libwayland-bin
 ```
 
 Clone Kurokesu's `rpicam-apps` fork:
@@ -76,7 +77,7 @@ cd rpicam-apps
 Configure with `meson` (libav enabled by default):
 
 ```bash
-meson setup build -Denable_libav=enabled -Denable_drm=enabled -Denable_egl=enabled -Denable_qt=enabled -Denable_opencv=disabled -Denable_tflite=disabled -Denable_hailo=disabled
+meson setup build -Denable_libav=enabled -Denable_drm=enabled -Denable_egl=enabled -Denable_wayland=enabled -Denable_qt=enabled -Denable_opencv=disabled -Denable_tflite=disabled -Denable_hailo=disabled
 ```
 
 > [!IMPORTANT]
@@ -93,7 +94,7 @@ Bookworm ships `libavcodec` **59.x** while newer `rpicam-apps` expects **libavco
   ```
 - **Disable libav** if building `rpicam-apps` > v1.9.0 (keeps AR0822 eHDR support):
   ```bash
-  meson setup build -Denable_libav=disabled -Denable_drm=enabled -Denable_egl=enabled -Denable_qt=enabled -Denable_opencv=disabled -Denable_tflite=disabled -Denable_hailo=disabled
+  meson setup build -Denable_libav=disabled -Denable_drm=enabled -Denable_egl=enabled -Denable_wayland=enabled -Denable_qt=enabled -Denable_opencv=disabled -Denable_tflite=disabled -Denable_hailo=disabled
   ```
 
 </details>

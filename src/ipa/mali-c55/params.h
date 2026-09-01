@@ -7,7 +7,9 @@
 
 #pragma once
 
-#include <linux/mali-c55-config.h>
+#include <stdint.h>
+
+#include <linux/media/arm/mali-c55-config.h>
 #include <linux/videodev2.h>
 
 #include <libipa/v4l2_params.h>
@@ -16,7 +18,7 @@ namespace libcamera {
 
 namespace ipa::mali_c55 {
 
-enum class MaliC55Blocks {
+enum class MaliC55Blocks : uint16_t {
 	Bls,
 	AexpHist,
 	AexpHistWeights,
@@ -27,6 +29,7 @@ enum class MaliC55Blocks {
 	AwbConfig,
 	MeshShadingConfig,
 	MeshShadingSel,
+	Ccm,
 };
 
 namespace details {
@@ -53,6 +56,7 @@ MALI_C55_DEFINE_BLOCK_TYPE(AwbGains,		awb_gains,		BLOCK_AWB_GAINS);
 MALI_C55_DEFINE_BLOCK_TYPE(AwbConfig,		awb_config,		BLOCK_AWB_CONFIG);
 MALI_C55_DEFINE_BLOCK_TYPE(MeshShadingConfig,	mesh_shading_config,	MESH_SHADING_CONFIG);
 MALI_C55_DEFINE_BLOCK_TYPE(MeshShadingSel,	mesh_shading_selection,	MESH_SHADING_SELECTION);
+MALI_C55_DEFINE_BLOCK_TYPE(Ccm,			ccm,			BLOCK_CCM);
 
 struct param_traits {
 	using id_type = MaliC55Blocks;

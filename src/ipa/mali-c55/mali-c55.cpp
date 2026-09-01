@@ -10,7 +10,7 @@
 #include <string.h>
 #include <vector>
 
-#include <linux/mali-c55-config.h>
+#include <linux/media/arm/mali-c55-config.h>
 #include <linux/v4l2-controls.h>
 
 #include <libcamera/base/file.h>
@@ -101,6 +101,8 @@ std::string IPAMaliC55::logPrefix() const
 int IPAMaliC55::init(const IPASettings &settings, const IPAConfigInfo &ipaConfig,
 		     ControlInfoMap *ipaControls)
 {
+	context_.sensorInfo = ipaConfig.sensorInfo;
+
 	camHelper_ = CameraSensorHelperFactoryBase::create(settings.sensorModel);
 	if (!camHelper_) {
 		LOG(IPAMaliC55, Error)

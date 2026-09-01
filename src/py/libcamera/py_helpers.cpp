@@ -3,13 +3,13 @@
  * Copyright (C) 2022, Tomi Valkeinen <tomi.valkeinen@ideasonboard.com>
  */
 
-#include "py_helpers.h"
-
-#include <libcamera/libcamera.h>
-
 #include <pybind11/functional.h>
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
+
+#include "py_helpers.h"
+
+#include <libcamera/libcamera.h>
 
 namespace py = pybind11;
 
@@ -47,7 +47,7 @@ py::object controlValueToPy(const ControlValue &cv)
 	case ControlTypeFloat:
 		return valueOrTuple<float>(cv);
 	case ControlTypeString:
-		return py::cast(cv.get<std::string>());
+		return py::cast(cv.get<std::string_view>());
 	case ControlTypeSize: {
 		const Size *v = reinterpret_cast<const Size *>(cv.data().data());
 		return py::cast(v);
@@ -88,7 +88,7 @@ ControlValue pyToControlValue(const py::object &ob, ControlType type)
 	case ControlTypeFloat:
 		return controlValueMaybeArray<float>(ob);
 	case ControlTypeString:
-		return ControlValue(ob.cast<std::string>());
+		return ControlValue(ob.cast<std::string_view>());
 	case ControlTypeRectangle:
 		return controlValueMaybeArray<Rectangle>(ob);
 	case ControlTypeSize:

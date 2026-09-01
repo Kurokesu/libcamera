@@ -23,20 +23,21 @@
 
 #include <libcamera/base/flags.h>
 #include <libcamera/base/log.h>
+#include <libcamera/base/utils.h>
 
 #include <libcamera/control_ids.h>
 #include <libcamera/controls.h>
 #include <libcamera/formats.h>
 #include <libcamera/pixel_format.h>
 #include <libcamera/property_ids.h>
-#include <libcamera/request.h>
 
 #include "libcamera/internal/camera.h"
 #include "libcamera/internal/dma_buf_allocator.h"
 #include "libcamera/internal/formats.h"
 #include "libcamera/internal/framebuffer.h"
 #include "libcamera/internal/pipeline_handler.h"
-#include "libcamera/internal/yaml_parser.h"
+#include "libcamera/internal/request.h"
+#include "libcamera/internal/value_node.h"
 
 #include "pipeline/virtual/config_parser.h"
 
@@ -56,13 +57,6 @@ uint64_t currentTimestamp()
 }
 
 } /* namespace */
-
-template<class... Ts>
-struct overloaded : Ts... {
-	using Ts::operator()...;
-};
-template<class... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
 
 class VirtualCameraConfiguration : public CameraConfiguration
 {
@@ -106,6 +100,7 @@ private:
 	}
 
 	bool initFrameGenerator(Camera *camera);
+	void bufferCompleted(FrameBuffer *buffer);
 
 	DmaBufAllocator dmaBufAllocator_;
 
@@ -114,7 +109,7 @@ private:
 
 VirtualCameraData::VirtualCameraData(PipelineHandler *pipe,
 				     const std::vector<Resolution> &supportedResolutions)
-	: Camera::Private(pipe)
+	: Camera::Private(pipe), Thread("VirtualCamera")
 {
 	config_.resolutions = supportedResolutions;
 	for (const auto &resolution : config_.resolutions) {
@@ -129,6 +124,39 @@ VirtualCameraData::VirtualCameraData(PipelineHandler *pipe,
 
 	/* \todo Support multiple streams and pass multi_stream_test */
 	streamConfigs_.resize(kMaxStream);
+
+	moveToThread(this);
+}
+
+void VirtualCameraData::processRequest(Request *request)
+{
+	for (const auto &[stream, buffer] : request->buffers()) {
+		bool found = false;
+		/* map buffer and fill test patterns */
+		for (auto &streamConfig : streamConfigs_) {
+			if (stream == &streamConfig.stream) {
+				FrameMetadata &fmd = buffer->_d()->metadata();
+
+				fmd.status = FrameMetadata::Status::FrameSuccess;
+				fmd.sequence = streamConfig.seq++;
+				fmd.timestamp = currentTimestamp();
+
+				Span<const FrameBuffer::Plane> planes = buffer->planes();
+				for (const auto [i, p] : utils::enumerate(planes))
+					fmd.planes()[i].bytesused = p.length;
+
+				found = true;
+
+				if (streamConfig.frameGenerator->generateFrame(
+					    stream->configuration().size, buffer))
+					fmd.status = FrameMetadata::Status::FrameError;
+
+				bufferCompleted.emit(buffer);
+				break;
+			}
+		}
+		ASSERT(found);
+	}
 }
 
 VirtualCameraConfiguration::VirtualCameraConfiguration(VirtualCameraData *data)
@@ -176,6 +204,17 @@ CameraConfiguration::Status VirtualCameraConfiguration::validate()
 
 		if (cfg.pixelFormat != formats::NV12) {
 			cfg.pixelFormat = formats::NV12;
+			status = Adjusted;
+			adjusted = true;
+		}
+
+		if (cfg.colorSpace != ColorSpace::Smpte170m) {
+			cfg.colorSpace = ColorSpace::Smpte170m;
+			status = Adjusted;
+			adjusted = true;
+		}
+
+		if (validateColorSpaces() == Adjusted) {
 			status = Adjusted;
 			adjusted = true;
 		}
@@ -244,6 +283,7 @@ PipelineHandlerVirtual::generateConfiguration(Camera *camera,
 		cfg.pixelFormat = pixelFormat;
 		cfg.size = data->config_.maxResolutionSize;
 		cfg.bufferCount = VirtualCameraConfiguration::kBufferCount;
+		cfg.colorSpace = ColorSpace::Smpte170m;
 
 		config->addConfiguration(cfg);
 	}
@@ -291,11 +331,27 @@ int PipelineHandlerVirtual::start([[maybe_unused]] Camera *camera,
 	for (auto &s : data->streamConfigs_)
 		s.seq = 0;
 
+	data->bufferCompleted.connect(this, &PipelineHandlerVirtual::bufferCompleted);
+	data->start();
+
 	return 0;
 }
 
-void PipelineHandlerVirtual::stopDevice([[maybe_unused]] Camera *camera)
+void PipelineHandlerVirtual::stopDevice(Camera *camera)
 {
+	VirtualCameraData *data = cameraData(camera);
+
+	/* Cancel pending work. */
+	data->exit();
+	data->wait();
+	data->removeMessages(data);
+
+	/* Process pending `bufferCompleted` signals. */
+	thread()->dispatchMessages(Message::Type::InvokeMessage, this);
+	data->bufferCompleted.disconnect(this);
+
+	while (!data->queuedRequests_.empty())
+		cancelRequest(data->queuedRequests_.front());
 }
 
 int PipelineHandlerVirtual::queueRequestDevice([[maybe_unused]] Camera *camera,
@@ -304,35 +360,9 @@ int PipelineHandlerVirtual::queueRequestDevice([[maybe_unused]] Camera *camera,
 	VirtualCameraData *data = cameraData(camera);
 	const auto timestamp = currentTimestamp();
 
-	for (auto const &[stream, buffer] : request->buffers()) {
-		bool found = false;
-		/* map buffer and fill test patterns */
-		for (auto &streamConfig : data->streamConfigs_) {
-			if (stream == &streamConfig.stream) {
-				FrameMetadata &fmd = buffer->_d()->metadata();
-
-				fmd.status = FrameMetadata::Status::FrameSuccess;
-				fmd.sequence = streamConfig.seq++;
-				fmd.timestamp = timestamp;
-
-				for (const auto [i, p] : utils::enumerate(buffer->planes()))
-					fmd.planes()[i].bytesused = p.length;
-
-				found = true;
-
-				if (streamConfig.frameGenerator->generateFrame(
-					    stream->configuration().size, buffer))
-					fmd.status = FrameMetadata::Status::FrameError;
-
-				completeBuffer(request, buffer);
-				break;
-			}
-		}
-		ASSERT(found);
-	}
-
-	request->metadata().set(controls::SensorTimestamp, timestamp);
-	completeRequest(request);
+	request->_d()->metadata().set(controls::SensorTimestamp, timestamp);
+	data->invokeMethod(&VirtualCameraData::processRequest,
+			   ConnectionTypeQueued, request);
 
 	return 0;
 }
@@ -392,7 +422,7 @@ bool PipelineHandlerVirtual::initFrameGenerator(Camera *camera)
 {
 	auto data = cameraData(camera);
 	auto &frame = data->config_.frame;
-	std::visit(overloaded{
+	std::visit(utils::overloaded{
 			   [&](TestPattern &testPattern) {
 				   for (auto &streamConfig : data->streamConfigs_) {
 					   if (testPattern == TestPattern::DiagonalLines)
@@ -412,6 +442,14 @@ bool PipelineHandlerVirtual::initFrameGenerator(Camera *camera)
 			return false;
 
 	return true;
+}
+
+void PipelineHandlerVirtual::bufferCompleted(FrameBuffer *buffer)
+{
+	Request *request = buffer->request();
+
+	if (completeBuffer(request, buffer))
+		completeRequest(request);
 }
 
 REGISTER_PIPELINE_HANDLER(PipelineHandlerVirtual, "virtual")

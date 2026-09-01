@@ -9,13 +9,14 @@
  * CPU based software statistics implementation
  */
 
-#include "swstats_cpu.h"
+#include "libcamera/internal/software_isp/swstats_cpu.h"
 
 #include <libcamera/base/log.h>
 
 #include <libcamera/stream.h>
 
 #include "libcamera/internal/bayer_format.h"
+#include "libcamera/internal/mapped_framebuffer.h"
 
 namespace libcamera {
 
@@ -32,6 +33,15 @@ namespace libcamera {
  *
  * It is also possible to specify a window over which to gather statistics
  * instead of processing the whole frame.
+ */
+
+/**
+ * \fn SwStatsCpu::SwStatsCpu(const CameraManager &cm)
+ * \brief Construct a SwStatsCpu object
+ * \param[in] cm The camera manager
+ *
+ * Creates a SwStatsCpu object and initialises shared memory for statistics
+ * exchange.
  */
 
 /**
@@ -58,26 +68,48 @@ namespace libcamera {
  * also indicates if processLine2() should be called or not.
  * This may only be called after a successful configure() call.
  *
+ * Valid sizes are: 1x1, 2x2, 4x2 or 4x4.
+ *
  * \return The pattern size
  */
 
 /**
- * \fn void SwStatsCpu::processLine0(unsigned int y, const uint8_t *src[])
+ * \fn void SwStatsCpu::processLine0(uint32_t frame, unsigned int y, const uint8_t *src[], unsigned int statsBufferIndex = 0)
  * \brief Process line 0
- * \param[in] y The y coordinate.
- * \param[in] src The input data.
+ * \param[in] frame The frame number
+ * \param[in] y The y coordinate
+ * \param[in] src The input data
+ * \param[in] statsBufferIndex Index of stats buffer to use for multi-threading
  *
  * This function processes line 0 for input formats with
  * patternSize height == 1.
  * It'll process line 0 and 1 for input formats with patternSize height >= 2.
  * This function may only be called after a successful setWindow() call.
+ *
+ * This function takes an array of src pointers each pointing to a line in
+ * the source image.
+ *
+ * Bayer input data requires (patternSize_.height + 1) src pointers, with
+ * the middle element of the array pointing to the actual line being processed.
+ * Earlier element(s) will point to the previous line(s) and later element(s)
+ * to the next line(s). See the DebayerCpu::debayerFn documentation for details.
+ *
+ * Planar input data requires a src pointer for each plane, with src[0] pointing
+ * to the line in plane 0, etc.
+ *
+ * For non Bayer single plane input data only a single src pointer is required.
+ *
+ * The statsBufferIndex value must be less than the statsBufferCount value passed
+ * to configure().
  */
 
 /**
- * \fn void SwStatsCpu::processLine2(unsigned int y, const uint8_t *src[])
+ * \fn void SwStatsCpu::processLine2(uint32_t frame, unsigned int y, const uint8_t *src[], unsigned int statsBufferIndex = 0)
  * \brief Process line 2 and 3
- * \param[in] y The y coordinate.
- * \param[in] src The input data.
+ * \param[in] frame The frame number
+ * \param[in] y The y coordinate
+ * \param[in] src The input data
+ * \param[in] statsBufferIndex Index of stats buffer to use for multi-threading
  *
  * This function processes line 2 and 3 for input formats with
  * patternSize height == 4.
@@ -87,6 +119,11 @@ namespace libcamera {
 /**
  * \var Signal<> SwStatsCpu::statsReady
  * \brief Signals that the statistics are ready
+ */
+
+/**
+ * \var SwStatsCpu::kStatPerNumFrames
+ * \brief Run stats once every kStatPerNumFrames frames
  */
 
 /**
@@ -114,13 +151,6 @@ namespace libcamera {
  */
 
 /**
- * \var Size SwStatsCpu::patternSize_
- * \brief The size of the bayer pattern
- *
- * Valid sizes are: 2x2, 4x2 or 4x4.
- */
-
-/**
  * \var unsigned int SwStatsCpu::xShift_
  * \brief The offset of x, applied to window_.x for bayer variants
  *
@@ -129,8 +159,8 @@ namespace libcamera {
 
 LOG_DEFINE_CATEGORY(SwStatsCpu)
 
-SwStatsCpu::SwStatsCpu()
-	: sharedStats_("softIsp_stats")
+SwStatsCpu::SwStatsCpu(const CameraManager &cm)
+	: sharedStats_("softIsp_stats"), bench_(cm, "CPU stats")
 {
 	if (!sharedStats_)
 		LOG(SwStatsCpu, Error)
@@ -157,14 +187,14 @@ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
 	yVal = r * kRedYMul;               \
 	yVal += g * kGreenYMul;            \
 	yVal += b * kBlueYMul;             \
-	stats_.yHistogram[yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div))]++;
+	stats.yHistogram[yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div))]++;
 
 #define SWSTATS_FINISH_LINE_STATS() \
-	stats_.sumR_ += sumR;       \
-	stats_.sumG_ += sumG;       \
-	stats_.sumB_ += sumB;
+	stats.sum_.r() += sumR;     \
+	stats.sum_.g() += sumG;     \
+	stats.sum_.b() += sumB;
 
-void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[])
+void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats)
 {
 	const uint8_t *src0 = src[1] + window_.x;
 	const uint8_t *src1 = src[2] + window_.x;
@@ -189,7 +219,7 @@ void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[])
 	SWSTATS_FINISH_LINE_STATS()
 }
 
-void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[])
+void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats)
 {
 	const uint16_t *src0 = (const uint16_t *)src[1] + window_.x;
 	const uint16_t *src1 = (const uint16_t *)src[2] + window_.x;
@@ -215,7 +245,7 @@ void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[])
 	SWSTATS_FINISH_LINE_STATS()
 }
 
-void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[])
+void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[], SwIspStats &stats)
 {
 	const uint16_t *src0 = (const uint16_t *)src[1] + window_.x;
 	const uint16_t *src1 = (const uint16_t *)src[2] + window_.x;
@@ -241,7 +271,7 @@ void SwStatsCpu::statsBGGR12Line0(const uint8_t *src[])
 	SWSTATS_FINISH_LINE_STATS()
 }
 
-void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[])
+void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
 {
 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
@@ -267,7 +297,7 @@ void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[])
 	SWSTATS_FINISH_LINE_STATS()
 }
 
-void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[])
+void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
 {
 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
@@ -293,20 +323,76 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[])
 	SWSTATS_FINISH_LINE_STATS()
 }
 
+void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats)
+{
+	const uint8_t *src0 = src[1] + window_.x * 3 / 2;
+	const uint8_t *src1 = src[2] + window_.x * 3 / 2;
+	const unsigned int widthInBytes = window_.width * 3 / 2;
+
+	SWSTATS_START_LINE_STATS(uint8_t)
+
+	if (swapLines_)
+		std::swap(src0, src1);
+
+	/* x += 6 sample every other 2x2 block */
+	for (unsigned int x = 0; x < widthInBytes; x += 6) {
+		b = src0[x];
+		g = src0[x + 1];
+		g2 = src1[x];
+		r = src1[x + 1];
+
+		g = (g + g2) / 2;
+
+		SWSTATS_ACCUMULATE_LINE_STATS(1)
+	}
+
+	SWSTATS_FINISH_LINE_STATS()
+}
+
+void SwStatsCpu::statsGBRG12PLine0(const uint8_t *src[], SwIspStats &stats)
+{
+	const uint8_t *src0 = src[1] + window_.x * 3 / 2;
+	const uint8_t *src1 = src[2] + window_.x * 3 / 2;
+	const unsigned int widthInBytes = window_.width * 3 / 2;
+
+	SWSTATS_START_LINE_STATS(uint8_t)
+
+	if (swapLines_)
+		std::swap(src0, src1);
+
+	/* x += 6 sample every other 2x2 block */
+	for (unsigned int x = 0; x < widthInBytes; x += 6) {
+		g = src0[x];
+		b = src0[x + 1];
+		r = src1[x];
+		g2 = src1[x + 1];
+
+		g = (g + g2) / 2;
+
+		SWSTATS_ACCUMULATE_LINE_STATS(1)
+	}
+
+	SWSTATS_FINISH_LINE_STATS()
+}
+
 /**
  * \brief Reset state to start statistics gathering for a new frame
+ * \param[in] frame The frame number
  *
  * This may only be called after a successful setWindow() call.
  */
-void SwStatsCpu::startFrame(void)
+void SwStatsCpu::startFrame(uint32_t frame)
 {
+	if (frame % kStatPerNumFrames)
+		return;
+
 	if (window_.width == 0)
 		LOG(SwStatsCpu, Error) << "Calling startFrame() without setWindow()";
 
-	stats_.sumR_ = 0;
-	stats_.sumB_ = 0;
-	stats_.sumG_ = 0;
-	stats_.yHistogram.fill(0);
+	for (auto &s : stats_) {
+		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
+		s.yHistogram.fill(0);
+	}
 }
 
 /**
@@ -318,7 +404,21 @@ void SwStatsCpu::startFrame(void)
  */
 void SwStatsCpu::finishFrame(uint32_t frame, uint32_t bufferId)
 {
-	*sharedStats_ = stats_;
+	bool valid = frame % kStatPerNumFrames == 0;
+
+	if (valid) {
+		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
+		sharedStats_->yHistogram.fill(0);
+		for (const auto &s : stats_) {
+			sharedStats_->sum_ += s.sum_;
+			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
+				sharedStats_->yHistogram[j] += s.yHistogram[j];
+		}
+
+		sharedStats_->sum_ >>= sumShift_;
+	}
+
+	sharedStats_->valid = valid;
 	statsReady.emit(frame, bufferId);
 }
 
@@ -361,46 +461,63 @@ int SwStatsCpu::setupStandardBayerOrder(BayerFormat::Order order)
 /**
  * \brief Configure the statistics object for the passed in input format
  * \param[in] inputCfg The input format
+ * \param[in] statsBufferCount number of internal stats buffers to use for multi-threading
  *
  * \return 0 on success, a negative errno value on failure
  */
-int SwStatsCpu::configure(const StreamConfiguration &inputCfg)
+int SwStatsCpu::configure(const StreamConfiguration &inputCfg, unsigned int statsBufferCount)
 {
+	stride_ = inputCfg.stride;
+	stats_.resize(statsBufferCount);
+
 	BayerFormat bayerFormat =
 		BayerFormat::fromPixelFormat(inputCfg.pixelFormat);
 
 	if (bayerFormat.packing == BayerFormat::Packing::None &&
 	    setupStandardBayerOrder(bayerFormat.order) == 0) {
+		processFrame_ = &SwStatsCpu::processBayerFrame2;
 		switch (bayerFormat.bitDepth) {
 		case 8:
 			stats0_ = &SwStatsCpu::statsBGGR8Line0;
+			sumShift_ = 0;
 			return 0;
 		case 10:
 			stats0_ = &SwStatsCpu::statsBGGR10Line0;
+			sumShift_ = 2;
 			return 0;
 		case 12:
 			stats0_ = &SwStatsCpu::statsBGGR12Line0;
+			sumShift_ = 4;
 			return 0;
 		}
 	}
 
-	if (bayerFormat.bitDepth == 10 &&
+	uint8_t bitDepth = bayerFormat.bitDepth;
+
+	if ((bitDepth == 10 || bitDepth == 12) &&
 	    bayerFormat.packing == BayerFormat::Packing::CSI2) {
+		if (bitDepth == 10)
+			patternSize_.width = 4; /* 5 bytes per *4* pixels */
+		else
+			patternSize_.width = 2; /* 3 bytes for *2* pixels */
+
 		patternSize_.height = 2;
-		patternSize_.width = 4; /* 5 bytes per *4* pixels */
+
 		/* Skip every 3th and 4th line, sample every other 2x2 block */
 		ySkipMask_ = 0x02;
 		xShift_ = 0;
+		sumShift_ = 0;
+		processFrame_ = &SwStatsCpu::processBayerFrame2;
 
 		switch (bayerFormat.order) {
 		case BayerFormat::BGGR:
 		case BayerFormat::GRBG:
-			stats0_ = &SwStatsCpu::statsBGGR10PLine0;
+			stats0_ = (bitDepth == 10) ? &SwStatsCpu::statsBGGR10PLine0 : &SwStatsCpu::statsBGGR12PLine0;
 			swapLines_ = bayerFormat.order == BayerFormat::GRBG;
 			return 0;
 		case BayerFormat::GBRG:
 		case BayerFormat::RGGB:
-			stats0_ = &SwStatsCpu::statsGBRG10PLine0;
+			stats0_ = (bitDepth == 10) ? &SwStatsCpu::statsGBRG10PLine0 : &SwStatsCpu::statsGBRG12PLine0;
 			swapLines_ = bayerFormat.order == BayerFormat::RGGB;
 			return 0;
 		default:
@@ -416,9 +533,33 @@ int SwStatsCpu::configure(const StreamConfiguration &inputCfg)
 /**
  * \brief Specify window coordinates over which to gather statistics
  * \param[in] window The window object.
+ *
+ * This method specifies the image area over which to gather the statistics.
+ * It must be called to set the area, otherwise the default zero-sized
+ * \a Rectangle is used and no statistics is gathered.
+ *
+ * The specified \a window is relative to what is passed to the processLine*
+ * methods. For example, if statistics are to be gathered from the entire
+ * processed area, then \a window should be a rectangle with the top-left corner
+ * of (0,0) and the same size as the processed area. If only a part of the
+ * processed area (e.g. its centre) is to be considered for statistics, then
+ * \a window should specify such a restriction accordingly.
+ *
+ * It is the responsibility of the callers to provide sensible \a window values,
+ * most notably not exceeding the original image boundaries. This means, among
+ * other, that neither coordinate of the top-left corner shall be negative.
+ *
+ * Due to limitations of the implementation, the method may adjust the window
+ * slightly if it is not aligned according to the bayer pattern determined in
+ * \a SwStatsCpu::configure(). In that case the window will be modified such that
+ * the sides are no larger than the original, and that the new bottom-left
+ * corner will be no further from (0,0) (along either axis) than the original
+ * was.
  */
 void SwStatsCpu::setWindow(const Rectangle &window)
 {
+	ASSERT(window.x >= 0 && window.y >= 0);
+
 	window_ = window;
 
 	window_.x &= ~(patternSize_.width - 1);
@@ -426,9 +567,53 @@ void SwStatsCpu::setWindow(const Rectangle &window)
 	window_.y &= ~(patternSize_.height - 1);
 
 	/* width_ - xShift_ to make sure the window fits */
-	window_.width -= xShift_;
+	window_.width = (window_.width > xShift_ ? window_.width - xShift_ : 0);
 	window_.width &= ~(patternSize_.width - 1);
 	window_.height &= ~(patternSize_.height - 1);
+}
+
+void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
+{
+	const uint8_t *src = in.planes()[0].data();
+	const uint8_t *linePointers[3];
+
+	/* Adjust src for starting at window_.y */
+	src += window_.y * stride_;
+
+	for (unsigned int y = 0; y < window_.height; y += 2) {
+		if (y & ySkipMask_) {
+			src += stride_ * 2;
+			continue;
+		}
+
+		/* linePointers[0] is not used by any stats0_ functions */
+		linePointers[1] = src;
+		linePointers[2] = src + stride_;
+		(this->*stats0_)(linePointers, stats_[0]);
+		src += stride_ * 2;
+	}
+}
+
+/**
+ * \brief Calculate statistics for a frame in one go
+ * \param[in] frame The frame number
+ * \param[in] bufferId ID of the statistics buffer
+ * \param[in] input The frame to process
+ *
+ * This may only be called after a successful setWindow() call.
+ */
+void SwStatsCpu::processFrame(uint32_t frame, uint32_t bufferId, MappedFrameBuffer &input)
+{
+	if (frame % kStatPerNumFrames) {
+		finishFrame(frame, bufferId);
+		return;
+	}
+
+	bench_.startFrame();
+	startFrame(frame);
+	(this->*processFrame_)(input);
+	finishFrame(frame, bufferId);
+	bench_.finishFrame();
 }
 
 } /* namespace libcamera */

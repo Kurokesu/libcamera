@@ -94,6 +94,7 @@ public:
 	int sensorInfo(IPACameraSensorInfo *info) const override;
 	Transform computeTransform(Orientation *orientation) const override;
 	BayerFormat::Order bayerOrder(Transform t) const override;
+	Orientation mountingOrientation() const override { return mountingOrientation_; }
 
 	const ControlInfoMap &controls() const override;
 	ControlList getControls(Span<const uint32_t> ids) override;
@@ -171,10 +172,12 @@ CameraSensorRaw::~CameraSensorRaw() = default;
 std::variant<std::unique_ptr<CameraSensor>, int>
 CameraSensorRaw::match(MediaEntity *entity)
 {
+	using libcamera::_log;
+
 	/* Check the entity type. */
 	if (entity->type() != MediaEntity::Type::V4L2Subdevice ||
 	    entity->function() != MEDIA_ENT_F_CAM_SENSOR) {
-		libcamera::LOG(CameraSensor, Debug)
+		LOG(CameraSensor, Debug)
 			<< entity->name() << ": unsupported entity type ("
 			<< utils::to_underlying(entity->type())
 			<< ") or function (" << utils::hex(entity->function()) << ")";
@@ -199,7 +202,7 @@ CameraSensorRaw::match(MediaEntity *entity)
 			break;
 
 		default:
-			libcamera::LOG(CameraSensor, Debug)
+			LOG(CameraSensor, Debug)
 				<< entity->name() << ": unsupported pad " << pad->index()
 				<< " type " << utils::hex(pad->flags());
 			return { 0 };
@@ -207,7 +210,7 @@ CameraSensorRaw::match(MediaEntity *entity)
 	}
 
 	if (numSinks < 1 || numSinks > 2 || numSources != 1) {
-		libcamera::LOG(CameraSensor, Debug)
+		LOG(CameraSensor, Debug)
 			<< entity->name() << ": unsupported number of sinks ("
 			<< numSinks << ") or sources (" << numSources << ")";
 		return { 0 };
@@ -717,8 +720,8 @@ void CameraSensorRaw::initTestPatternModes()
 	 * list of supported test patterns.
 	 */
 	std::map<int32_t, controls::draft::TestPatternModeEnum> indexToTestPatternMode;
-	for (const auto &it : testPatternModes)
-		indexToTestPatternMode[it.second] = it.first;
+	for (const auto &[mode, index] : testPatternModes)
+		indexToTestPatternMode[index] = mode;
 
 	for (const ControlValue &value : v4l2TestPattern->second.values()) {
 		const int32_t index = value.get<int32_t>();

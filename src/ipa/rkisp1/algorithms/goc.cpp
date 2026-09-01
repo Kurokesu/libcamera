@@ -13,7 +13,7 @@
 
 #include <libcamera/control_ids.h>
 
-#include "libcamera/internal/yaml_parser.h"
+#include "libcamera/internal/value_node.h"
 
 #include "linux/rkisp1-config.h"
 
@@ -48,9 +48,9 @@ const float kDefaultGamma = 2.2f;
 /**
  * \copydoc libcamera::ipa::Algorithm::init
  */
-int GammaOutCorrection::init(IPAContext &context, const YamlObject &tuningData)
+int GammaOutCorrection::init(IPAContext &context, const ValueNode &tuningData)
 {
-	if (context.hw->numGammaOutSamples !=
+	if (context.hw.numGammaOutSamples !=
 	    RKISP1_CIF_ISP_GAMMA_OUT_MAX_SAMPLES_V10) {
 		LOG(RkISP1Gamma, Error)
 			<< "Gamma is not implemented for RkISP1 V12";
@@ -101,7 +101,7 @@ void GammaOutCorrection::prepare(IPAContext &context,
 				 IPAFrameContext &frameContext,
 				 RkISP1Params *params)
 {
-	ASSERT(context.hw->numGammaOutSamples ==
+	ASSERT(context.hw.numGammaOutSamples ==
 	       RKISP1_CIF_ISP_GAMMA_OUT_MAX_SAMPLES_V10);
 
 	if (!frameContext.goc.update)

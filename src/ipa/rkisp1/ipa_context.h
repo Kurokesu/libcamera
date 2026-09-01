@@ -24,19 +24,36 @@
 #include "libcamera/internal/matrix.h"
 #include "libcamera/internal/vector.h"
 
-#include <libipa/camera_sensor_helper.h>
-#include <libipa/fc_queue.h>
+#include "libipa/agc_mean_luminance.h"
+#include "libipa/awb.h"
+#include "libipa/camera_sensor_helper.h"
+#include "libipa/ccm.h"
+#include "libipa/fc_queue.h"
+#include "libipa/fixedpoint.h"
+#include "libipa/lsc.h"
 
 namespace libcamera {
 
 namespace ipa::rkisp1 {
+
+/* Fixed point types used by CPROC */
+using BrightnessQ = Q<1, 7>;
+using ContrastQ = UQ<1, 7>;
+using HueQ = Q<1, 7>;
+using SaturationQ = UQ<1, 7>;
 
 struct IPAHwSettings {
 	unsigned int numAeCells;
 	unsigned int numHistogramBins;
 	unsigned int numHistogramWeights;
 	unsigned int numGammaOutSamples;
+	uint32_t supportedBlocks;
 	bool compand;
+};
+
+struct RKISP1AwbSession {
+	struct rkisp1_cif_isp_window measureWindow;
+	bool enabled;
 };
 
 struct IPASessionConfiguration {
@@ -44,14 +61,11 @@ struct IPASessionConfiguration {
 		struct rkisp1_cif_isp_window measureWindow;
 	} agc;
 
-	struct {
-		struct rkisp1_cif_isp_window measureWindow;
-		bool enabled;
-	} awb;
+	struct RKISP1AwbSession awb;
 
 	struct {
-		bool enabled;
-	} lsc;
+		bool supported;
+	} compress;
 
 	struct {
 		utils::Duration minExposureTime;
@@ -77,6 +91,8 @@ struct IPAActiveState {
 		struct {
 			uint32_t exposure;
 			double gain;
+			double quantizationGain;
+			double yTarget;
 		} automatic;
 
 		bool autoExposureEnabled;
@@ -89,27 +105,17 @@ struct IPAActiveState {
 		utils::Duration maxFrameDuration;
 	} agc;
 
-	struct {
-		struct AwbState {
-			RGB<double> gains;
-			unsigned int temperatureK;
-		};
+	ipa::awb::ActiveState awb;
 
-		AwbState manual;
-		AwbState automatic;
-
-		bool autoEnabled;
-	} awb;
+	ipa::ccm::ActiveState ccm;
 
 	struct {
-		Matrix<float, 3, 3> manual;
-		Matrix<float, 3, 3> automatic;
-	} ccm;
-
-	struct {
-		int8_t brightness;
-		uint8_t contrast;
-		uint8_t saturation;
+		float requestedBrightness;
+		float actualBrightness;
+		BrightnessQ brightness;
+		ContrastQ contrast;
+		HueQ hue;
+		SaturationQ saturation;
 	} cproc;
 
 	struct {
@@ -124,6 +130,19 @@ struct IPAActiveState {
 	struct {
 		double gamma;
 	} goc;
+
+	struct {
+		double lux;
+	} lux;
+
+	struct {
+		controls::WdrModeEnum mode;
+		AgcMeanLuminance::AgcConstraint constraint;
+		double gain;
+		double strength;
+	} wdr;
+
+	ipa::lsc::ActiveState lsc;
 };
 
 struct IPAFrameContext : public FrameContext {
@@ -131,7 +150,9 @@ struct IPAFrameContext : public FrameContext {
 		uint32_t exposure;
 		double gain;
 		double exposureValue;
+		double quantizationGain;
 		uint32_t vblank;
+		double yTarget;
 		bool autoExposureEnabled;
 		bool autoGainEnabled;
 		controls::AeConstraintModeEnum constraintMode;
@@ -145,18 +166,22 @@ struct IPAFrameContext : public FrameContext {
 		bool autoGainModeChange;
 	} agc;
 
-	struct {
-		RGB<double> gains;
-		bool autoEnabled;
-		unsigned int temperatureK;
-	} awb;
+	ipa::awb::FrameContext awb;
 
 	struct {
-		int8_t brightness;
-		uint8_t contrast;
-		uint8_t saturation;
+		float actualBrightness;
+		BrightnessQ brightness;
+		ContrastQ contrast;
+		HueQ hue;
+		SaturationQ saturation;
+
 		bool update;
 	} cproc;
+
+	struct {
+		bool enable;
+		double gain;
+	} compress;
 
 	struct {
 		bool denoise;
@@ -179,22 +204,28 @@ struct IPAFrameContext : public FrameContext {
 		double gain;
 	} sensor;
 
-	struct {
-		Matrix<float, 3, 3> ccm;
-	} ccm;
+	ipa::ccm::FrameContext ccm;
 
 	struct {
 		double lux;
 	} lux;
+
+	struct {
+		controls::WdrModeEnum mode;
+		double strength;
+		double gain;
+	} wdr;
+
+	ipa::lsc::FrameContext lsc;
 };
 
 struct IPAContext {
 	IPAContext(unsigned int frameContextSize)
-		: hw(nullptr), frameContexts(frameContextSize)
+		: frameContexts(frameContextSize)
 	{
 	}
 
-	const IPAHwSettings *hw;
+	IPAHwSettings hw;
 	IPACameraSensorInfo sensorInfo;
 	IPASessionConfiguration configuration;
 	IPAActiveState activeState;

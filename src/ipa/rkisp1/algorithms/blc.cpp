@@ -13,7 +13,7 @@
 
 #include <libcamera/control_ids.h>
 
-#include "libcamera/internal/yaml_parser.h"
+#include "libcamera/internal/value_node.h"
 
 /**
  * \file blc.h
@@ -53,7 +53,7 @@ BlackLevelCorrection::BlackLevelCorrection()
 /**
  * \copydoc libcamera::ipa::Algorithm::init
  */
-int BlackLevelCorrection::init(IPAContext &context, const YamlObject &tuningData)
+int BlackLevelCorrection::init(IPAContext &context, const ValueNode &tuningData)
 {
 	std::optional<int16_t> levelRed = tuningData["R"].get<int16_t>();
 	std::optional<int16_t> levelGreenR = tuningData["Gr"].get<int16_t>();
@@ -114,7 +114,7 @@ int BlackLevelCorrection::configure(IPAContext &context,
 	 * of the extensible parameters format.
 	 */
 	supported_ = context.configuration.paramFormat == V4L2_META_FMT_RK_ISP1_EXT_PARAMS ||
-		     !context.hw->compand;
+		     !context.hw.compand;
 
 	if (!supported_)
 		LOG(RkISP1Blc, Warning)
@@ -140,7 +140,7 @@ void BlackLevelCorrection::prepare(IPAContext &context,
 	if (!supported_)
 		return;
 
-	if (context.hw->compand) {
+	if (context.hw.compand) {
 		auto config = params->block<BlockType::CompandBls>();
 		config.setEnabled(true);
 

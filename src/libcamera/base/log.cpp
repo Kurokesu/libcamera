@@ -19,6 +19,7 @@
 #include <string_view>
 #include <syslog.h>
 #include <time.h>
+#include <unistd.h>
 #include <unordered_set>
 
 #include <libcamera/logging.h>
@@ -235,8 +236,8 @@ void LogOutput::write(const LogMessage &msg)
 
 	switch (target_) {
 	case LoggingTargetSyslog:
-		str = std::string(log_severity_name(severity)) + " "
-		    + msg.category().name() + " " + msg.fileInfo() + " ";
+		str = std::string(log_severity_name(severity)) + ' '
+		    + msg.category().name() + ' ' + msg.fileInfo() + ' ';
 		if (!msg.prefix().empty())
 			str += msg.prefix() + ": ";
 		str += msg.msg();
@@ -244,11 +245,11 @@ void LogOutput::write(const LogMessage &msg)
 		break;
 	case LoggingTargetStream:
 	case LoggingTargetFile:
-		str = "[" + utils::time_point_to_string(msg.timestamp()) + "] ["
+		str = '[' + utils::time_point_to_string(msg.timestamp()) + "] ["
 		    + std::to_string(Thread::currentId()) + "] "
-		    + severityColor + log_severity_name(severity) + " "
-		    + categoryColor + msg.category().name() + " "
-		    + fileColor + msg.fileInfo() + " ";
+		    + severityColor + log_severity_name(severity) + ' '
+		    + categoryColor + msg.category().name() + ' '
+		    + fileColor + msg.fileInfo() + ' ';
 		if (!msg.prefix().empty())
 			str += prefixColor + msg.prefix() + ": ";
 		str += resetColor + msg.msg();
@@ -325,6 +326,11 @@ private:
 	std::vector<std::unique_ptr<LogCategory>> categories_ LIBCAMERA_TSA_GUARDED_BY(mutex_);
 	std::list<std::pair<std::string, LogSeverity>> levels_;
 
+	/*
+	 * \todo Use `std::atomic<std::shared_ptr<>>` and drop the pragma
+	 * once it works on all supported platforms.
+	 */
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 	std::shared_ptr<LogOutput> output_;
 };
 
@@ -582,14 +588,21 @@ void Logger::logSetLevel(const char *category, const char *level)
 /**
  * \brief Construct a logger
  *
- * If the environment variable is not set, log to std::cerr. The log messages
- * are then colored by default. This can be overridden by setting the
- * LIBCAMERA_LOG_NO_COLOR environment variable to disable coloring.
+ * If the environment variable is not set, log to std::cerr. The coloring
+ * of log messages can be controlled using the LIBCAMERA_LOG_COLOR environment
+ * variable.
  */
 Logger::Logger()
 {
-	bool color = !utils::secure_getenv("LIBCAMERA_LOG_NO_COLOR");
-	logSetStream(&std::cerr, color);
+	const char *color = utils::secure_getenv("LIBCAMERA_LOG_COLOR");
+	bool wantColor = false;
+
+	if (!color || strcmp(color, "auto") == 0)
+		wantColor = isatty(STDERR_FILENO) == 1;
+	else if (strcmp(color, "yes") == 0)
+		wantColor = true;
+
+	logSetStream(&std::cerr, wantColor);
 
 	parseLogFile();
 	parseLogLevels();
@@ -849,23 +862,13 @@ LogMessage::LogMessage(const char *fileName, unsigned int line,
 
 LogMessage::~LogMessage()
 {
-	/* Don't print anything if we have been moved to another LogMessage. */
-	if (severity_ == LogInvalid)
-		return;
-
 	Logger *logger = Logger::instance();
 	if (!logger)
 		return;
 
 	msgStream_ << std::endl;
 
-	if (severity_ >= category_.severity())
-		logger->write(*this);
-
-	if (severity_ == LogSeverity::LogFatal) {
-		logger->backtrace();
-		std::abort();
-	}
+	logger->write(*this);
 }
 
 /**
@@ -913,6 +916,17 @@ LogMessage::~LogMessage()
  * \brief Retrieve the message text of the log message
  * \return The message text of the message, as a string
  */
+
+#ifndef __DOXYGEN__
+LogMessageAbortGuard<LogFatal>::~LogMessageAbortGuard()
+{
+	Logger *logger = Logger::instance();
+	if (logger)
+		logger->backtrace();
+
+	std::abort();
+}
+#endif
 
 /**
  * \class Loggable

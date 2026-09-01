@@ -12,6 +12,8 @@
 
 #include <libcamera/base/log.h>
 
+#include "libcamera/internal/value_node.h"
+
 /**
  * \file geometry.h
  * \brief Data structures related to geometric objects
@@ -205,6 +207,16 @@ std::string Size::toString() const
  * This function subtracts the width and height of the \a margin size from this
  * size. If the width or height of the size are smaller than those of \a
  * margins, the result is clamped to 0.
+ *
+ * \return A reference to this object
+ */
+
+/**
+ * \fn Size::transpose()
+ * \brief Transpose the size in place
+ *
+ * This function swaps width and height of this size. This effectively applies
+ * the \a Transform::Transpose transformation on this size.
  *
  * \return A reference to this object
  */
@@ -913,5 +925,32 @@ std::ostream &operator<<(std::ostream &out, const Rectangle &r)
 	out << "(" << r.x << ", " << r.y << ")/" << r.width << "x" << r.height;
 	return out;
 }
+
+#ifndef __DOXYGEN__
+/*
+ * The value node shall be a list of two numerical values containing the x and y
+ * coordinates, in that order.
+ */
+template<>
+std::optional<Size>
+ValueNode::Accessor<Size>::get(const ValueNode &obj) const
+{
+	if (obj.type_ != Type::List)
+		return std::nullopt;
+
+	if (obj.list_.size() != 2)
+		return std::nullopt;
+
+	auto width = obj.list_[0].value->get<uint32_t>();
+	if (!width)
+		return std::nullopt;
+
+	auto height = obj.list_[1].value->get<uint32_t>();
+	if (!height)
+		return std::nullopt;
+
+	return Size(*width, *height);
+}
+#endif /* __DOXYGEN__ */
 
 } /* namespace libcamera */

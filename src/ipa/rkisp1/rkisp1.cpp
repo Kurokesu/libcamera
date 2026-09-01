@@ -52,6 +52,7 @@ public:
 	IPARkISP1();
 
 	int init(const IPASettings &settings, unsigned int hwRevision,
+		 uint32_t supportedBlocks,
 		 const IPACameraSensorInfo &sensorInfo,
 		 const ControlInfoMap &sensorControls,
 		 ControlInfoMap *ipaControls) override;
@@ -94,6 +95,7 @@ const IPAHwSettings ipaHwSettingsV10{
 	RKISP1_CIF_ISP_HIST_BIN_N_MAX_V10,
 	RKISP1_CIF_ISP_HISTOGRAM_WEIGHT_GRIDS_SIZE_V10,
 	RKISP1_CIF_ISP_GAMMA_OUT_MAX_SAMPLES_V10,
+	0,
 	false,
 };
 
@@ -102,6 +104,7 @@ const IPAHwSettings ipaHwSettingsIMX8MP{
 	RKISP1_CIF_ISP_HIST_BIN_N_MAX_V10,
 	RKISP1_CIF_ISP_HISTOGRAM_WEIGHT_GRIDS_SIZE_V10,
 	RKISP1_CIF_ISP_GAMMA_OUT_MAX_SAMPLES_V10,
+	0,
 	true,
 };
 
@@ -110,6 +113,7 @@ const IPAHwSettings ipaHwSettingsV12{
 	RKISP1_CIF_ISP_HIST_BIN_N_MAX_V12,
 	RKISP1_CIF_ISP_HISTOGRAM_WEIGHT_GRIDS_SIZE_V12,
 	RKISP1_CIF_ISP_GAMMA_OUT_MAX_SAMPLES_V12,
+	0,
 	false,
 };
 
@@ -132,6 +136,7 @@ std::string IPARkISP1::logPrefix() const
 }
 
 int IPARkISP1::init(const IPASettings &settings, unsigned int hwRevision,
+		    uint32_t supportedBlocks,
 		    const IPACameraSensorInfo &sensorInfo,
 		    const ControlInfoMap &sensorControls,
 		    ControlInfoMap *ipaControls)
@@ -139,13 +144,13 @@ int IPARkISP1::init(const IPASettings &settings, unsigned int hwRevision,
 	/* \todo Add support for other revisions */
 	switch (hwRevision) {
 	case RKISP1_V10:
-		context_.hw = &ipaHwSettingsV10;
+		context_.hw = ipaHwSettingsV10;
 		break;
 	case RKISP1_V_IMX8MP:
-		context_.hw = &ipaHwSettingsIMX8MP;
+		context_.hw = ipaHwSettingsIMX8MP;
 		break;
 	case RKISP1_V12:
-		context_.hw = &ipaHwSettingsV12;
+		context_.hw = ipaHwSettingsV12;
 		break;
 	default:
 		LOG(IPARkISP1, Error)
@@ -153,6 +158,7 @@ int IPARkISP1::init(const IPASettings &settings, unsigned int hwRevision,
 			<< " is currently not supported";
 		return -ENODEV;
 	}
+	context_.hw.supportedBlocks = supportedBlocks;
 
 	LOG(IPARkISP1, Debug) << "Hardware revision is " << hwRevision;
 
@@ -179,7 +185,7 @@ int IPARkISP1::init(const IPASettings &settings, unsigned int hwRevision,
 		return ret;
 	}
 
-	std::unique_ptr<libcamera::YamlObject> data = YamlParser::parse(file);
+	std::unique_ptr<ValueNode> data = YamlParser::parse(file);
 	if (!data)
 		return -EINVAL;
 
@@ -274,7 +280,7 @@ int IPARkISP1::configure(const IPAConfigInfo &ipaConfig,
 			return format.colourEncoding == PixelFormatInfo::ColourEncodingRAW;
 		});
 
-	for (auto const &a : algorithms()) {
+	for (const auto &a : algorithms()) {
 		Algorithm *algo = static_cast<Algorithm *>(a.get());
 
 		/* Disable algorithms that don't support raw formats. */
@@ -325,7 +331,7 @@ void IPARkISP1::queueRequest(const uint32_t frame, const ControlList &controls)
 	IPAFrameContext &frameContext = context_.frameContexts.alloc(frame);
 	context_.debugMetadata.enableByControl(controls);
 
-	for (auto const &a : algorithms()) {
+	for (const auto &a : algorithms()) {
 		Algorithm *algo = static_cast<Algorithm *>(a.get());
 		if (algo->disabled_)
 			continue;
@@ -340,10 +346,10 @@ void IPARkISP1::computeParams(const uint32_t frame, const uint32_t bufferId)
 	RkISP1Params params(context_.configuration.paramFormat,
 			    mappedBuffers_.at(bufferId).planes()[0]);
 
-	for (auto const &algo : algorithms())
+	for (const auto &algo : algorithms())
 		algo->prepare(context_, frame, frameContext, &params);
 
-	paramsComputed.emit(frame, params.size());
+	paramsComputed.emit(frame, params.bytesused());
 }
 
 void IPARkISP1::processStats(const uint32_t frame, const uint32_t bufferId,
@@ -367,7 +373,7 @@ void IPARkISP1::processStats(const uint32_t frame, const uint32_t bufferId,
 
 	ControlList metadata(controls::controls);
 
-	for (auto const &a : algorithms()) {
+	for (const auto &a : algorithms()) {
 		Algorithm *algo = static_cast<Algorithm *>(a.get());
 		if (algo->disabled_)
 			continue;
@@ -433,7 +439,8 @@ void IPARkISP1::updateControls(const IPACameraSensorInfo &sensorInfo,
 
 	/* \todo Move this (and other agc-related controls) to agc */
 	context_.ctrlMap[&controls::FrameDurationLimits] =
-		ControlInfo(frameDurations[0], frameDurations[1], frameDurations[2]);
+		ControlInfo(frameDurations[0], frameDurations[1],
+			    ControlValue(Span<const int64_t, 2>{ { frameDurations[2], frameDurations[2] } }));
 
 	ctrlMap.insert(context_.ctrlMap.begin(), context_.ctrlMap.end());
 	*ipaControls = ControlInfoMap(std::move(ctrlMap), controls::controls);

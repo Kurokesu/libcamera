@@ -10,6 +10,7 @@
 
 #include <libcamera/base/utils.h>
 
+#include "../camera_mode.h"
 #include "../lux_status.h"
 #include "../algorithm.h"
 
@@ -22,7 +23,8 @@ class Lux : public Algorithm
 public:
 	Lux(Controller *controller);
 	char const *name() const override;
-	int read(const libcamera::YamlObject &params) override;
+	int read(const libcamera::ValueNode &params) override;
+	void switchMode(CameraMode const &cameraMode, Metadata *metadata) override;
 	void prepare(Metadata *imageMetadata) override;
 	void process(StatisticsPtr &stats, Metadata *imageMetadata) override;
 	void setCurrentAperture(double aperture);
@@ -40,6 +42,7 @@ private:
 	double currentAperture_;
 	LuxStatus status_;
 	std::mutex mutex_;
+	double sensitivity_;
 };
 
 } /* namespace RPiController */

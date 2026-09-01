@@ -15,6 +15,7 @@
 
 #include "libcamera/internal/camera.h"
 #include "libcamera/internal/device_enumerator.h"
+#include "libcamera/internal/global_configuration.h"
 #include "libcamera/internal/ipa_manager.h"
 #include "libcamera/internal/pipeline_handler.h"
 
@@ -38,9 +39,8 @@ LOG_DEFINE_CATEGORY(Camera)
 
 #ifndef __DOXYGEN_PUBLIC__
 CameraManager::Private::Private()
-	: initialized_(false)
+	: Thread("CameraManager"), initialized_(false)
 {
-	ipaManager_ = std::make_unique<IPAManager>();
 }
 
 int CameraManager::Private::start()
@@ -93,6 +93,9 @@ void CameraManager::Private::run()
 
 int CameraManager::Private::init()
 {
+	CameraManager *const o = LIBCAMERA_O_PTR();
+	ipaManager_ = std::make_unique<IPAManager>(*o);
+
 	enumerator_ = DeviceEnumerator::create();
 	if (!enumerator_ || enumerator_->enumerate())
 		return -ENODEV;
@@ -110,14 +113,14 @@ void CameraManager::Private::createPipelineHandlers()
 	 * file and only fallback on environment variable or all handlers, if
 	 * there is no configuration file.
 	 */
-	const char *pipesList =
-		utils::secure_getenv("LIBCAMERA_PIPELINES_MATCH_LIST");
-	if (pipesList) {
+	const auto pipesList =
+		configuration().listOption({ "pipelines_match_list" });
+	if (pipesList.has_value()) {
 		/*
 		 * When a list of preferred pipelines is defined, iterate
 		 * through the ordered list to match the enumerated devices.
 		 */
-		for (const auto &pipeName : utils::split(pipesList, ",")) {
+		for (const auto &pipeName : pipesList.value()) {
 			const PipelineHandlerFactoryBase *factory;
 			factory = PipelineHandlerFactoryBase::getFactoryByName(pipeName);
 			if (!factory)
@@ -257,6 +260,13 @@ void CameraManager::Private::removeCamera(std::shared_ptr<Camera> camera)
 	CameraManager *const o = LIBCAMERA_O_PTR();
 	o->cameraRemoved.emit(camera);
 }
+
+/**
+ * \fn const GlobalConfiguration &CameraManager::Private::configuration() const
+ * \brief Get global configuration bound to the camera manager
+ *
+ * \return Reference to the configuration
+ */
 
 /**
  * \fn CameraManager::Private::ipaManager() const
@@ -430,7 +440,7 @@ std::shared_ptr<Camera> CameraManager::get(std::string_view id)
 /**
  * \fn const std::string &CameraManager::version()
  * \brief Retrieve the libcamera version string
- * \context This function is \a threadsafe.
+ * \context This function is \threadsafe.
  * \return The libcamera version string
  */
 

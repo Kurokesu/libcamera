@@ -5,6 +5,8 @@
  * Pipeline handler for VC4-based Raspberry Pi devices
  */
 
+#include <memory>
+
 #include <linux/bcm2835-isp.h>
 #include <linux/v4l2-controls.h>
 #include <linux/videodev2.h>
@@ -67,7 +69,7 @@ public:
 
 	CameraConfiguration::Status platformValidate(RPi::RPiCameraConfiguration *rpiConfig) const override;
 
-	int platformPipelineConfigure(const std::unique_ptr<YamlObject> &root) override;
+	int platformPipelineConfigure(const std::unique_ptr<ValueNode> &root) override;
 
 	void platformStart() override;
 	void platformStop() override;
@@ -166,9 +168,10 @@ private:
 		return static_cast<Vc4CameraData *>(camera->_d());
 	}
 
-	int prepareBuffers(Camera *camera) override;
+	int allocateBuffers(Camera *camera) override;
 	int platformRegister(std::unique_ptr<RPi::CameraData> &cameraData,
-			     MediaDevice *unicam, MediaDevice *isp) override;
+			     std::shared_ptr<MediaDevice> unicam,
+			     std::shared_ptr<MediaDevice> isp) override;
 };
 
 bool PipelineHandlerVc4::match(DeviceEnumerator *enumerator)
@@ -183,7 +186,7 @@ bool PipelineHandlerVc4::match(DeviceEnumerator *enumerator)
 	 */
 	for (unsigned int i = 0; i < numUnicamDevices; i++) {
 		DeviceMatch unicam("unicam");
-		MediaDevice *unicamDevice = acquireMediaDevice(enumerator, unicam);
+		std::shared_ptr<MediaDevice> unicamDevice = acquireMediaDevice(enumerator, unicam);
 
 		if (!unicamDevice) {
 			LOG(RPI, Debug) << "Unable to acquire a Unicam instance";
@@ -191,7 +194,7 @@ bool PipelineHandlerVc4::match(DeviceEnumerator *enumerator)
 		}
 
 		DeviceMatch isp("bcm2835-isp");
-		MediaDevice *ispDevice = acquireMediaDevice(enumerator, isp);
+		std::shared_ptr<MediaDevice> ispDevice = acquireMediaDevice(enumerator, isp);
 
 		if (!ispDevice) {
 			LOG(RPI, Debug) << "Unable to acquire ISP instance";
@@ -226,7 +229,7 @@ bool PipelineHandlerVc4::match(DeviceEnumerator *enumerator)
 	return false;
 }
 
-int PipelineHandlerVc4::prepareBuffers(Camera *camera)
+int PipelineHandlerVc4::allocateBuffers(Camera *camera)
 {
 	Vc4CameraData *data = cameraData(camera);
 	unsigned int minUnicamBuffers = data->config_.minUnicamBuffers;
@@ -264,7 +267,7 @@ int PipelineHandlerVc4::prepareBuffers(Camera *camera)
 	}
 
 	/* Decide how many internal buffers to allocate. */
-	for (auto const stream : data->streams_) {
+	for (const auto stream : data->streams_) {
 		unsigned int numBuffers;
 		/*
 		 * For Unicam, allocate a minimum number of buffers for internal
@@ -325,7 +328,7 @@ int PipelineHandlerVc4::prepareBuffers(Camera *camera)
 		LOG(RPI, Debug) << "Preparing " << numBuffers
 				<< " buffers for stream " << stream->name();
 
-		ret = stream->prepareBuffers(numBuffers);
+		ret = stream->allocateBuffers(numBuffers);
 		if (ret < 0)
 			return ret;
 	}
@@ -342,7 +345,9 @@ int PipelineHandlerVc4::prepareBuffers(Camera *camera)
 	return 0;
 }
 
-int PipelineHandlerVc4::platformRegister(std::unique_ptr<RPi::CameraData> &cameraData, MediaDevice *unicam, MediaDevice *isp)
+int PipelineHandlerVc4::platformRegister(std::unique_ptr<RPi::CameraData> &cameraData,
+					 std::shared_ptr<MediaDevice> unicam,
+					 std::shared_ptr<MediaDevice> isp)
 {
 	Vc4CameraData *data = static_cast<Vc4CameraData *>(cameraData.get());
 
@@ -532,7 +537,7 @@ CameraConfiguration::Status Vc4CameraData::platformValidate(RPi::RPiCameraConfig
 	return status;
 }
 
-int Vc4CameraData::platformPipelineConfigure(const std::unique_ptr<YamlObject> &root)
+int Vc4CameraData::platformPipelineConfigure(const std::unique_ptr<ValueNode> &root)
 {
 	config_ = {
 		.minUnicamBuffers = 2,
@@ -557,7 +562,7 @@ int Vc4CameraData::platformPipelineConfigure(const std::unique_ptr<YamlObject> &
 		return -EINVAL;
 	}
 
-	const YamlObject &phConfig = (*root)["pipeline_handler"];
+	const ValueNode &phConfig = (*root)["pipeline_handler"];
 	config_.minUnicamBuffers =
 		phConfig["min_unicam_buffers"].get<unsigned int>(config_.minUnicamBuffers);
 	config_.minTotalUnicamBuffers =
@@ -979,9 +984,6 @@ void Vc4CameraData::tryRunPipeline()
 
 	fillRequestMetadata(bayerFrame.controls, request);
 
-	/* Set our state to say the pipeline is active. */
-	state_ = State::Busy;
-
 	unsigned int bayer = unicam_[Unicam::Image].getBufferId(bayerFrame.buffer);
 
 	LOG(RPI, Debug) << "Signalling prepareIsp:"
@@ -990,10 +992,16 @@ void Vc4CameraData::tryRunPipeline()
 	ipa::RPi::PrepareParams params;
 	params.buffers.bayer = RPi::MaskBayerData | bayer;
 	params.sensorControls = std::move(bayerFrame.controls);
-	params.requestControls = request->controls();
 	params.ipaContext = request->sequence();
 	params.delayContext = bayerFrame.delayContext;
 	params.buffers.embedded = 0;
+	/* params.requestControls is set by handleControlLists. */
+
+	/* This sorts out synchronisation with ControlLists in earlier requests. */
+	handleControlLists(bayerFrame.delayContext, params.requestControls);
+
+	/* Set our state to say the pipeline is active. */
+	state_ = State::Busy;
 
 	if (embeddedBuffer) {
 		unsigned int embeddedId = unicam_[Unicam::Embedded].getBufferId(embeddedBuffer);

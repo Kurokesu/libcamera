@@ -11,18 +11,12 @@
  *  - Implement GstElement::send_event
  *    + Allowing application to use FLUSH/FLUSH_STOP
  *    + Prevent the main thread from accessing streaming thread
- *  - Implement GstElement::request-new-pad (multi stream)
- *    + Evaluate if a single streaming thread is fine
  *  - Add application driven request (snapshot)
- *  - Add framerate control
  *  - Add buffer importation support
+ *    + Evaluate the feasibility of memory:DMAbuf support
  *
  *  Requires new libcamera API:
- *  - Add framerate negotiation support
- *  - Add colorimetry support
  *  - Add timestamp support
- *  - Use unique names to select the camera devices
- *  - Add GstVideoMeta support (strides and offsets)
  */
 
 #include "gstlibcamerasrc.h"
@@ -54,11 +48,10 @@ struct RequestWrap {
 	RequestWrap(std::unique_ptr<Request> request);
 	~RequestWrap();
 
-	void attachBuffer(Stream *stream, GstBuffer *buffer);
-	GstBuffer *detachBuffer(Stream *stream);
+	void attachBuffer(GstPad *srcpad, GstBuffer *buffer);
+	GstBuffer *detachBuffer(GstPad *srcpad);
 
 	std::unique_ptr<Request> request_;
-	std::map<Stream *, GstBuffer *> buffers_;
 
 	GstClockTime latency_;
 	GstClockTime pts_;
@@ -71,36 +64,39 @@ RequestWrap::RequestWrap(std::unique_ptr<Request> request)
 
 RequestWrap::~RequestWrap()
 {
-	for (std::pair<Stream *const, GstBuffer *> &item : buffers_) {
-		if (item.second)
-			gst_buffer_unref(item.second);
+	if (!request_)
+		return;
+
+	for (const auto &[stream, fb] : request_->buffers()) {
+		auto *buffer = reinterpret_cast<GstBuffer *>(fb->cookie());
+		if (buffer)
+			gst_buffer_unref(buffer);
+
+		fb->setCookie(0);
 	}
 }
 
-void RequestWrap::attachBuffer(Stream *stream, GstBuffer *buffer)
+void RequestWrap::attachBuffer(GstPad *srcpad, GstBuffer *buffer)
 {
 	FrameBuffer *fb = gst_libcamera_buffer_get_frame_buffer(buffer);
+	Stream *stream = gst_libcamera_pad_get_stream(srcpad);
 
 	request_->addBuffer(stream, fb);
-
-	auto item = buffers_.find(stream);
-	if (item != buffers_.end()) {
-		gst_buffer_unref(item->second);
-		item->second = buffer;
-	} else {
-		buffers_[stream] = buffer;
-	}
+	fb->setCookie(reinterpret_cast<uint64_t>(buffer));
 }
 
-GstBuffer *RequestWrap::detachBuffer(Stream *stream)
+GstBuffer *RequestWrap::detachBuffer(GstPad *srcpad)
 {
-	GstBuffer *buffer = nullptr;
+	const Stream *stream = gst_libcamera_pad_get_stream(srcpad);
+	FrameBuffer *fb = request_->findBuffer(stream);
+	if (!fb)
+		return nullptr;
 
-	auto item = buffers_.find(stream);
-	if (item != buffers_.end()) {
-		buffer = item->second;
-		item->second = nullptr;
-	}
+	auto *buffer = reinterpret_cast<GstBuffer *>(fb->cookie());
+
+	fb->setCookie(0);
+
+	g_assert(!buffer || fb == gst_libcamera_buffer_get_frame_buffer(buffer));
 
 	return buffer;
 }
@@ -146,6 +142,7 @@ struct _GstLibcameraSrc {
 	GstTask *task;
 
 	gchar *camera_name;
+	GstStructure *sensor_config;
 
 	std::atomic<GstEvent *> pending_eos;
 
@@ -157,6 +154,7 @@ struct _GstLibcameraSrc {
 enum {
 	PROP_0,
 	PROP_CAMERA_NAME,
+	PROP_SENSOR_CONFIG,
 	PROP_LAST
 };
 
@@ -195,7 +193,6 @@ int GstLibcameraSrcState::queueRequest()
 		std::make_unique<RequestWrap>(std::move(request));
 
 	for (GstPad *srcpad : srcpads_) {
-		Stream *stream = gst_libcamera_pad_get_stream(srcpad);
 		GstLibcameraPool *pool = gst_libcamera_pad_get_pool(srcpad);
 		GstBuffer *buffer;
 		GstFlowReturn ret;
@@ -210,14 +207,14 @@ int GstLibcameraSrcState::queueRequest()
 			return -ENOBUFS;
 		}
 
-		wrap->attachBuffer(stream, buffer);
+		wrap->attachBuffer(srcpad, buffer);
 	}
 
 	GST_TRACE_OBJECT(src_, "Requesting buffers");
-	cam_->queueRequest(wrap->request_.get());
 
 	{
 		GLibLocker locker(&lock_);
+		cam_->queueRequest(wrap->request_.get());
 		queuedRequests_.push(std::move(wrap));
 	}
 
@@ -360,10 +357,10 @@ int GstLibcameraSrcState::processRequest()
 	for (gsize i = 0; i < srcpads_.size(); i++) {
 		GstPad *srcpad = srcpads_[i];
 		Stream *stream = gst_libcamera_pad_get_stream(srcpad);
-		GstBuffer *buffer = wrap->detachBuffer(stream);
+		GstBuffer *buffer = wrap->detachBuffer(srcpad);
 
 		FrameBuffer *fb = gst_libcamera_buffer_get_frame_buffer(buffer);
-		const StreamConfiguration &stream_cfg = config_->at(i);
+		const StreamConfiguration &stream_cfg = stream->configuration();
 		GstBufferPool *video_pool = gst_libcamera_pad_get_video_pool(srcpad);
 
 		if (video_pool) {
@@ -580,12 +577,8 @@ gst_libcamera_create_video_pool(GstLibcameraSrc *self, GstPad *srcpad,
 		gst_buffer_pool_set_config(GST_BUFFER_POOL_CAST(pool), config);
 	}
 
-	if (!gst_buffer_pool_set_active(pool, true)) {
-		GST_ELEMENT_ERROR(self, RESOURCE, SETTINGS,
-				  ("Failed to active buffer pool"),
-				  ("gst_libcamera_src_negotiate() failed."));
+	if (!gst_buffer_pool_set_active(pool, true))
 		return { nullptr, -EINVAL };
-	}
 
 	return { std::exchange(pool, nullptr), 0 };
 }
@@ -686,8 +679,12 @@ gst_libcamera_src_negotiate(GstLibcameraSrc *self)
 			std::tie(video_pool, ret) =
 				gst_libcamera_create_video_pool(self, srcpad,
 								caps, &info);
-			if (ret)
+			if (ret) {
+				GST_ELEMENT_ERROR(self, RESOURCE, SETTINGS,
+						  ("Failed to create video pool: %s", g_strerror(-ret)),
+						  ("gst_libcamera_src_negotiate() failed."));
 				return false;
+			}
 		}
 
 		GstLibcameraPool *pool = gst_libcamera_pool_new(self->allocator,
@@ -697,6 +694,9 @@ gst_libcamera_src_negotiate(GstLibcameraSrc *self)
 
 		gst_libcamera_pad_set_pool(srcpad, pool);
 		gst_libcamera_pad_set_video_pool(srcpad, video_pool);
+
+		/* Associate the configured stream with the source pad. */
+		gst_libcamera_pad_set_stream(srcpad, stream_cfg.stream());
 
 		/* Clear all reconfigure flags. */
 		gst_pad_check_reconfigure(srcpad);
@@ -849,6 +849,55 @@ gst_libcamera_src_task_enter(GstTask *task, [[maybe_unused]] GThread *thread,
 	}
 	g_assert(state->config_->size() == state->srcpads_.size());
 
+	/* Apply optional sensor configuration. */
+	if (self->sensor_config) {
+		gint w = 0, h = 0, depth = 0;
+		if (!gst_structure_get_int(self->sensor_config, "width", &w) ||
+		    !gst_structure_get_int(self->sensor_config, "height", &h) ||
+		    !gst_structure_get_int(self->sensor_config, "depth", &depth) ||
+		    w <= 0 || h <= 0 || depth <= 0) {
+			GST_ELEMENT_WARNING(self, RESOURCE, SETTINGS,
+					    ("sensor-config requires non-zero width, height and depth"
+					     " fields, ignoring"),
+					    (nullptr));
+		} else {
+			SensorConfiguration sensorCfg;
+			sensorCfg.outputSize = Size(w, h);
+			sensorCfg.bitDepth = depth;
+
+			/* Optional binning (defaults to 1x1). */
+			gint binX, binY;
+			if (gst_structure_get_int(self->sensor_config, "bin-x", &binX) && binX > 0)
+				sensorCfg.binning.binX = binX;
+			if (gst_structure_get_int(self->sensor_config, "bin-y", &binY) && binY > 0)
+				sensorCfg.binning.binY = binY;
+
+			/* Optional skipping (defaults to 1 for all increments). */
+			gint xOddInc, xEvenInc, yOddInc, yEvenInc;
+			if (gst_structure_get_int(self->sensor_config, "x-odd-inc", &xOddInc) && xOddInc > 0)
+				sensorCfg.skipping.xOddInc = xOddInc;
+			if (gst_structure_get_int(self->sensor_config, "x-even-inc", &xEvenInc) && xEvenInc > 0)
+				sensorCfg.skipping.xEvenInc = xEvenInc;
+			if (gst_structure_get_int(self->sensor_config, "y-odd-inc", &yOddInc) && yOddInc > 0)
+				sensorCfg.skipping.yOddInc = yOddInc;
+			if (gst_structure_get_int(self->sensor_config, "y-even-inc", &yEvenInc) && yEvenInc > 0)
+				sensorCfg.skipping.yEvenInc = yEvenInc;
+
+			/* Optional analog crop (defaults to "unset"). */
+			gint cropX, cropY, cropW, cropH;
+			if (gst_structure_get_int(self->sensor_config, "analog-crop-x", &cropX) &&
+			    gst_structure_get_int(self->sensor_config, "analog-crop-y", &cropY) &&
+			    gst_structure_get_int(self->sensor_config, "analog-crop-width", &cropW) &&
+			    gst_structure_get_int(self->sensor_config, "analog-crop-height", &cropH) &&
+			    cropX >= 0 && cropY >= 0 && cropW > 0 && cropH > 0)
+				sensorCfg.analogCrop = Rectangle(cropX, cropY,
+								 static_cast<unsigned int>(cropW),
+								 static_cast<unsigned int>(cropH));
+
+			state->config_->sensorConfig = sensorCfg;
+		}
+	}
+
 	if (!gst_libcamera_src_negotiate(self)) {
 		state->initControls_.clear();
 		GST_ELEMENT_FLOW_ERROR(self, GST_FLOW_NOT_NEGOTIATED);
@@ -894,6 +943,7 @@ gst_libcamera_src_task_leave([[maybe_unused]] GstTask *task,
 		for (GstPad *srcpad : state->srcpads_) {
 			gst_libcamera_pad_set_latency(srcpad, GST_CLOCK_TIME_NONE);
 			gst_libcamera_pad_set_pool(srcpad, nullptr);
+			gst_libcamera_pad_set_stream(srcpad, nullptr);
 		}
 	}
 
@@ -936,6 +986,10 @@ gst_libcamera_src_set_property(GObject *object, guint prop_id,
 		g_free(self->camera_name);
 		self->camera_name = g_value_dup_string(value);
 		break;
+	case PROP_SENSOR_CONFIG:
+		g_clear_pointer(&self->sensor_config, gst_structure_free);
+		self->sensor_config = (GstStructure *)g_value_dup_boxed(value);
+		break;
 	default:
 		if (!state->controls_.setProperty(prop_id - PROP_LAST, value, pspec))
 			G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
@@ -954,6 +1008,9 @@ gst_libcamera_src_get_property(GObject *object, guint prop_id, GValue *value,
 	switch (prop_id) {
 	case PROP_CAMERA_NAME:
 		g_value_set_string(value, self->camera_name);
+		break;
+	case PROP_SENSOR_CONFIG:
+		g_value_set_boxed(value, self->sensor_config);
 		break;
 	default:
 		if (!state->controls_.getProperty(prop_id - PROP_LAST, value, pspec))
@@ -1042,6 +1099,7 @@ gst_libcamera_src_finalize(GObject *object)
 	g_clear_object(&self->task);
 	g_mutex_clear(&self->state->lock_);
 	g_free(self->camera_name);
+	g_clear_pointer(&self->sensor_config, gst_structure_free);
 	delete self->state;
 
 	return klass->finalize(object);
@@ -1163,6 +1221,20 @@ gst_libcamera_src_class_init(GstLibcameraSrcClass *klass)
 							     | G_PARAM_READWRITE
 							     | G_PARAM_STATIC_STRINGS));
 	g_object_class_install_property(object_class, PROP_CAMERA_NAME, spec);
+
+	spec = g_param_spec_boxed("sensor-config", "Sensor Config",
+				  "Desired sensor configuration as a GstStructure with mandatory "
+				  "fields width, height and depth, and optional fields bin-x, bin-y, "
+				  "x-odd-inc, x-even-inc, y-odd-inc, y-even-inc, "
+				  "analog-crop-x, analog-crop-y, analog-crop-width, analog-crop-height "
+				  "(e.g. \"sensor/config,width=2304,height=1296,depth=10\"). "
+				  "Leave unset to let the pipeline negotiate the sensor mode automatically.",
+				  GST_TYPE_STRUCTURE,
+				  (GParamFlags)(GST_PARAM_MUTABLE_READY
+						| G_PARAM_CONSTRUCT
+						| G_PARAM_READWRITE
+						| G_PARAM_STATIC_STRINGS));
+	g_object_class_install_property(object_class, PROP_SENSOR_CONFIG, spec);
 
 	GstCameraControls::installProperties(object_class, PROP_LAST);
 }

@@ -22,7 +22,6 @@ class CameraSensor;
 class FrameBuffer;
 class MediaDevice;
 class PixelFormat;
-class Request;
 class Size;
 class SizeRange;
 struct StreamConfiguration;
@@ -38,7 +37,7 @@ public:
 	std::vector<PixelFormat> formats() const;
 	std::vector<SizeRange> sizes(const PixelFormat &format) const;
 
-	int init(const MediaDevice *media, unsigned int index);
+	int init(std::shared_ptr<const MediaDevice> media, unsigned int index);
 	int configure(const Size &size, const Transform &transform,
 		      V4L2DeviceFormat *outputFormat);
 
@@ -56,7 +55,7 @@ public:
 	CameraSensor *sensor() { return sensor_.get(); }
 	const CameraSensor *sensor() const { return sensor_.get(); }
 
-	FrameBuffer *queueBuffer(Request *request, FrameBuffer *rawBuffer);
+	FrameBuffer *queueBuffer(FrameBuffer *rawBuffer);
 	void tryReturnBuffer(FrameBuffer *buffer);
 	Signal<FrameBuffer *> &bufferReady() { return output_->bufferReady; }
 	Signal<uint32_t> &frameStart() { return csi2_->frameStart; }

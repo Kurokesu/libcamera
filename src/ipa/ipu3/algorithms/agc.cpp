@@ -65,14 +65,14 @@ Agc::Agc()
 /**
  * \brief Initialise the AGC algorithm from tuning files
  * \param[in] context The shared IPA context
- * \param[in] tuningData The YamlObject containing Agc tuning data
+ * \param[in] tuningData The ValueNode containing Agc tuning data
  *
  * This function calls the base class' tuningData parsers to discover which
  * control values are supported.
  *
  * \return 0 on success or errors from the base class
  */
-int Agc::init(IPAContext &context, const YamlObject &tuningData)
+int Agc::init(IPAContext &context, const ValueNode &tuningData)
 {
 	int ret;
 
@@ -117,7 +117,7 @@ int Agc::configure(IPAContext &context,
 
 	/* \todo Run this again when FrameDurationLimits is passed in */
 	setLimits(minExposureTime_, maxExposureTime_, minAnalogueGain_,
-		  maxAnalogueGain_);
+		  maxAnalogueGain_, {});
 	resetFrameCount();
 
 	return 0;
@@ -222,8 +222,8 @@ void Agc::process(IPAContext &context, [[maybe_unused]] const uint32_t frame,
 	utils::Duration effectiveExposureValue = exposureTime * analogueGain;
 
 	utils::Duration newExposureTime;
-	double aGain, dGain;
-	std::tie(newExposureTime, aGain, dGain) =
+	double aGain, qGain, dGain;
+	std::tie(newExposureTime, aGain, qGain, dGain) =
 		calculateNewEv(context.activeState.agc.constraintMode,
 			       context.activeState.agc.exposureMode, hist,
 			       effectiveExposureValue);

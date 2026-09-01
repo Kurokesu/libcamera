@@ -17,11 +17,13 @@
 #include <libcamera/controls.h>
 #include <libcamera/stream.h>
 
+#include "libcamera/internal/camera_manager.h"
+#include "libcamera/internal/ipa_manager.h"
+
 namespace libcamera {
 
 class Camera;
 class CameraConfiguration;
-class CameraManager;
 class DeviceEnumerator;
 class DeviceMatch;
 class FrameBuffer;
@@ -38,8 +40,8 @@ public:
 	virtual ~PipelineHandler();
 
 	virtual bool match(DeviceEnumerator *enumerator) = 0;
-	MediaDevice *acquireMediaDevice(DeviceEnumerator *enumerator,
-					const DeviceMatch &dm);
+	std::shared_ptr<MediaDevice> acquireMediaDevice(DeviceEnumerator *enumerator,
+							const DeviceMatch &dm);
 
 	bool acquire(Camera *camera);
 	void release(Camera *camera);
@@ -70,9 +72,17 @@ public:
 
 	CameraManager *cameraManager() const { return manager_; }
 
+	template<typename T>
+	std::unique_ptr<T> createIPA(uint32_t minVersion, uint32_t maxVersion)
+	{
+		IPAManager *ipaManager = manager_->_d()->ipaManager();
+		return ipaManager->createIPA<T>(this, minVersion, maxVersion);
+	}
+
 protected:
 	void registerCamera(std::shared_ptr<Camera> camera);
-	void hotplugMediaDevice(MediaDevice *media);
+	void hotplugMediaDevice(std::shared_ptr<MediaDevice> media);
+	unsigned int useCount() const { return useCount_; }
 
 	virtual int queueRequestDevice(Camera *camera, Request *request) = 0;
 	virtual void stopDevice(Camera *camera) = 0;
@@ -86,7 +96,7 @@ protected:
 private:
 	void unlockMediaDevices();
 
-	void mediaDeviceDisconnected(MediaDevice *media);
+	void mediaDeviceDisconnected(std::shared_ptr<MediaDevice> media);
 	virtual void disconnect();
 
 	void doQueueRequest(Request *request);

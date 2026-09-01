@@ -20,6 +20,7 @@
 
 #include <libcamera/base/file.h>
 #include <libcamera/base/log.h>
+#include <libcamera/base/span.h>
 #include <libcamera/base/utils.h>
 
 #include <libcamera/control_ids.h>
@@ -280,12 +281,11 @@ void IPAIPU3::updateControls(const IPACameraSensorInfo &sensorInfo,
 		uint64_t frameSize = lineLength * frameHeights[i];
 		frameDurations[i] = frameSize / (sensorInfo.pixelRate / 1000000U);
 	}
-
 	controls[&controls::FrameDurationLimits] = ControlInfo(frameDurations[0],
 							       frameDurations[1],
-							       frameDurations[2]);
+							       Span<const int64_t, 2>{ { frameDurations[2], frameDurations[2] } });
 
-	controls.merge(context_.ctrlMap);
+	controls.insert(context_.ctrlMap.begin(), context_.ctrlMap.end());
 	*ipaControls = ControlInfoMap(std::move(controls), controls::controls);
 }
 
@@ -324,7 +324,7 @@ int IPAIPU3::init(const IPASettings &settings,
 		return ret;
 	}
 
-	std::unique_ptr<libcamera::YamlObject> data = YamlParser::parse(file);
+	std::unique_ptr<ValueNode> data = YamlParser::parse(file);
 	if (!data)
 		return -EINVAL;
 
@@ -493,7 +493,7 @@ int IPAIPU3::configure(const IPAConfigInfo &configInfo,
 	/* Update the IPASessionConfiguration using the sensor settings. */
 	updateSessionConfiguration(sensorCtrls_);
 
-	for (auto const &algo : algorithms()) {
+	for (const auto &algo : algorithms()) {
 		int ret = algo->configure(context_, configInfo);
 		if (ret)
 			return ret;
@@ -563,7 +563,7 @@ void IPAIPU3::computeParams(const uint32_t frame, const uint32_t bufferId)
 
 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
 
-	for (auto const &algo : algorithms())
+	for (const auto &algo : algorithms())
 		algo->prepare(context_, frame, frameContext, params);
 
 	paramsComputed.emit(frame);
@@ -601,7 +601,7 @@ void IPAIPU3::processStats(const uint32_t frame,
 
 	ControlList metadata(controls::controls);
 
-	for (auto const &algo : algorithms())
+	for (const auto &algo : algorithms())
 		algo->process(context_, frame, frameContext, stats, metadata);
 
 	setControls(frame);
@@ -629,7 +629,7 @@ void IPAIPU3::queueRequest(const uint32_t frame, const ControlList &controls)
 {
 	IPAFrameContext &frameContext = context_.frameContexts.alloc(frame);
 
-	for (auto const &algo : algorithms())
+	for (const auto &algo : algorithms())
 		algo->queueRequest(context_, frame, frameContext, controls);
 }
 

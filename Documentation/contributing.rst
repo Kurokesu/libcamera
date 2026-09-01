@@ -30,29 +30,54 @@ to the public. Point your IRC client to #libcamera to say hello, or use the
 
 .. _WebChat: https://webchat.oftc.net/?channels=libcamera
 
+The IRC channel is also bridged and accessible via `Matrix`_ in the #libcamera
+room:
+
+.. _Matrix: https://matrix.to/#/#libcamera:matrix.org
+
 Source Code
 -----------
 
-libcamera is in early stages of development, and no releases are available yet.
-The source code is available from the project's `git tree`_.
+libcamera is in active development, including investigations into what a 'good'
+API is for the implementation. We can't guarantee we have all features
+implemented, or designed correctly yet, and we have plans to make considerable
+changes to the API and ABI in our roadmap.
+
+Even so, we provide periodic 'releases' to support distributions and packaging
+teams. To support this we are currently making releases of the 0.y.z version
+scheme, loosely following semver.
+
+In the foreseeable future, the following applies:
+
+  0.y.z : Active development, but with ABI breakage detection. The 0.y
+          version will bump on an ABI/API breakage. Ongoing development will
+          increment the .z version component. Therefore, pre 1.0 'y' is a
+          close equivalent to a major release.
+
+  1.y.z : Stable API and ABI guarantees on the Major version number.
+          Following semantic versioning as documented at https://semver.org/
+
+
+The source code is available from the project's `git tree`_, hosted by
+Freedesktop.
 
 .. code-block:: shell
 
-  $ git clone https://git.libcamera.org/libcamera/libcamera.git
+  $ git clone https://gitlab.freedesktop.org/camera/libcamera.git
 
-.. _git tree: https://git.libcamera.org/libcamera/libcamera.git/
+.. _git tree: https://gitlab.freedesktop.org/camera/libcamera
 
-A mirror is also hosted on `LinuxTV`_.
+Freedesktop also provides our CI and `testing pipeline`_.
 
-.. _LinuxTV: https://git.linuxtv.org/libcamera.git/
+.. _testing pipeline: https://gitlab.freedesktop.org/camera/libcamera/-/pipelines
 
 Issue Tracker
 -------------
 
-Our `issue tracker`_ tracks all bugs, issues and feature requests. All issues
-are publicly visible, and you can register for an account to create new issues.
+Our `issue tracker`_ also hosted at Freedesktop tracks all bugs, issues and
+feature requests.
 
-.. _issue tracker: https://bugs.libcamera.org/
+.. _issue tracker: https://gitlab.freedesktop.org/camera/libcamera/-/issues
 
 Documentation
 -------------

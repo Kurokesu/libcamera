@@ -67,6 +67,14 @@ namespace libcamera::ipa::rkisp1 {
  */
 
 /**
+ * \var IPASessionConfiguration::compress
+ * \brief Compress parameters configuration of the IPA
+ *
+ * \var IPASessionConfiguration::agc.supported
+ * \brief true if compression is supported and the algorithm is loaded
+ */
+
+/**
  * \var IPASessionConfiguration::lsc
  * \brief Lens Shading Correction configuration of the IPA
  *
@@ -224,9 +232,15 @@ namespace libcamera::ipa::rkisp1 {
 /**
  * \var IPAActiveState::cproc
  * \brief State for the Color Processing algorithm
+  *
+ * \var IPAActiveState::cproc.requestedBrightness
+ * \brief Brightness level requested by the user
+  *
+ * \var IPAActiveState::cproc.actualBrightness
+ * \brief Brightness level after contrast compensation
  *
- * \struct IPAActiveState::cproc.brightness
- * \brief Brightness level
+ * \var IPAActiveState::cproc.brightness
+ * \brief Hardware brightness level
  *
  * \var IPAActiveState::cproc.contrast
  * \brief Contrast level
@@ -378,11 +392,25 @@ namespace libcamera::ipa::rkisp1 {
  */
 
 /**
+ * \var IPAFrameContext::compress
+ * \brief Compress parameters for this frame
+ *
+ * \struct IPAFrameContext::compress.enable
+ * \brief True if compression is enabled
+ *
+ * \var IPAFrameContext::compress.gain
+ * \brief The gain applied with the compression curve
+ */
+
+/**
  * \var IPAFrameContext::cproc
  * \brief Color Processing parameters for this frame
  *
- * \struct IPAFrameContext::cproc.brightness
- * \brief Brightness level
+ * \var IPAFrameContext::cproc.actualBrightness
+ * \brief Brightness level after contrast compensation
+ *
+ * \var IPAFrameContext::cproc.brightness
+ * \brief Hardware brightness level
  *
  * \var IPAFrameContext::cproc.contrast
  * \brief Contrast level

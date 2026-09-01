@@ -236,8 +236,8 @@ void LogOutput::write(const LogMessage &msg)
 
 	switch (target_) {
 	case LoggingTargetSyslog:
-		str = std::string(log_severity_name(severity)) + " "
-		    + msg.category().name() + " " + msg.fileInfo() + " ";
+		str = std::string(log_severity_name(severity)) + ' '
+		    + msg.category().name() + ' ' + msg.fileInfo() + ' ';
 		if (!msg.prefix().empty())
 			str += msg.prefix() + ": ";
 		str += msg.msg();
@@ -245,11 +245,11 @@ void LogOutput::write(const LogMessage &msg)
 		break;
 	case LoggingTargetStream:
 	case LoggingTargetFile:
-		str = "[" + utils::time_point_to_string(msg.timestamp()) + "] ["
+		str = '[' + utils::time_point_to_string(msg.timestamp()) + "] ["
 		    + std::to_string(Thread::currentId()) + "] "
-		    + severityColor + log_severity_name(severity) + " "
-		    + categoryColor + msg.category().name() + " "
-		    + fileColor + msg.fileInfo() + " ";
+		    + severityColor + log_severity_name(severity) + ' '
+		    + categoryColor + msg.category().name() + ' '
+		    + fileColor + msg.fileInfo() + ' ';
 		if (!msg.prefix().empty())
 			str += prefixColor + msg.prefix() + ": ";
 		str += resetColor + msg.msg();
@@ -326,6 +326,11 @@ private:
 	std::vector<std::unique_ptr<LogCategory>> categories_ LIBCAMERA_TSA_GUARDED_BY(mutex_);
 	std::list<std::pair<std::string, LogSeverity>> levels_;
 
+	/*
+	 * \todo Use `std::atomic<std::shared_ptr<>>` and drop the pragma
+	 * once it works on all supported platforms.
+	 */
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 	std::shared_ptr<LogOutput> output_;
 };
 
@@ -864,11 +869,6 @@ LogMessage::~LogMessage()
 	msgStream_ << std::endl;
 
 	logger->write(*this);
-
-	if (severity_ == LogSeverity::LogFatal) {
-		logger->backtrace();
-		std::abort();
-	}
 }
 
 /**
@@ -916,6 +916,17 @@ LogMessage::~LogMessage()
  * \brief Retrieve the message text of the log message
  * \return The message text of the message, as a string
  */
+
+#ifndef __DOXYGEN__
+LogMessageAbortGuard<LogFatal>::~LogMessageAbortGuard()
+{
+	Logger *logger = Logger::instance();
+	if (logger)
+		logger->backtrace();
+
+	std::abort();
+}
+#endif
 
 /**
  * \class Loggable

@@ -578,11 +578,11 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
 			       [](const Entity &e) {
 				       std::string s = "[";
 				       if (e.sink)
-					       s += std::to_string(e.sink->index()) + "|";
+					       s += std::to_string(e.sink->index()) + '|';
 				       s += e.entity->name();
 				       if (e.source)
-					       s += "|" + std::to_string(e.source->index());
-				       s += "]";
+					       s += '|' + std::to_string(e.source->index());
+				       s += ']';
 				       return s;
 			       });
 }
@@ -1542,6 +1542,11 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
 	captureFormat.fourcc = videoFormat;
 	captureFormat.size = pipeConfig->captureSize;
 
+	uint32_t requested_bpl = 0;
+	if (data->swIsp_)
+		requested_bpl = data->swIsp_->preferredInputStride(videoFormat.toPixelFormat(), pipeConfig->captureSize);
+	captureFormat.planes[0].bpl = requested_bpl;
+
 	ret = video->setFormat(&captureFormat);
 	if (ret)
 		return ret;
@@ -1561,8 +1566,15 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
 		return -EINVAL;
 	}
 
+	if (requested_bpl && captureFormat.planes[0].bpl != requested_bpl) {
+		LOG(SimplePipeline, Info)
+			<< "Input buffer stride ignored by the driver. "
+			<< "Requested " << requested_bpl
+			<< ", got " << captureFormat.planes[0].bpl;
+	}
+
 	/* Configure the converter if needed. */
-	std::vector<std::reference_wrapper<StreamConfiguration>> outputCfgs;
+	std::vector<std::reference_wrapper<const StreamConfiguration>> outputCfgs;
 	data->useConversion_ = config->needConversion();
 
 	data->rawStream_ = nullptr;
@@ -1880,7 +1892,7 @@ bool SimplePipelineHandler::matchDevice(std::shared_ptr<MediaDevice> media,
 
 	swIspEnabled_ = info.swIspEnabled;
 	const GlobalConfiguration &configuration = cameraManager()->_d()->configuration();
-	for (GlobalConfiguration::Configuration entry :
+	for (const ValueNode &entry :
 	     configuration.configuration()["pipelines"]["simple"]["supported_devices"]
 		     .asList()) {
 		auto name = entry["driver"].get<std::string>();

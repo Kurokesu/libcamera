@@ -82,11 +82,11 @@ std::vector<SizeRange> CIO2Device::sizes(const PixelFormat &format) const
 		return {};
 
 	std::vector<SizeRange> sizes;
-	for (const auto &iter : mbusCodesToPixelFormat) {
-		if (iter.second != format)
+	for (const auto &[code, pixelFormat] : mbusCodesToPixelFormat) {
+		if (pixelFormat != format)
 			continue;
 
-		mbusCode = iter.first;
+		mbusCode = code;
 		break;
 	}
 
@@ -378,7 +378,7 @@ int CIO2Device::stop()
 	return ret;
 }
 
-FrameBuffer *CIO2Device::queueBuffer(Request *request, FrameBuffer *rawBuffer)
+FrameBuffer *CIO2Device::queueBuffer(FrameBuffer *rawBuffer)
 {
 	FrameBuffer *buffer = rawBuffer;
 
@@ -391,7 +391,6 @@ FrameBuffer *CIO2Device::queueBuffer(Request *request, FrameBuffer *rawBuffer)
 
 		buffer = availableBuffers_.front();
 		availableBuffers_.pop();
-		buffer->_d()->setRequest(request);
 	}
 
 	int ret = output_->queueBuffer(buffer);

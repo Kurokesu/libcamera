@@ -931,6 +931,7 @@ Camera::Camera(std::unique_ptr<Private> d, const std::string &id,
 	: Extensible(std::move(d))
 {
 	_d()->id_ = id;
+	_d()->properties_.set(properties::PipelineHandler, _d()->pipe_->name());
 	_d()->streams_ = streams;
 	_d()->validator_ = std::make_unique<CameraControlValidator>(this);
 }
@@ -1345,6 +1346,12 @@ int Camera::queueRequest(Request *request)
 		return -EINVAL;
 	}
 
+	/* Make sure the Request has a valid control list. */
+	if (request->controls().infoMap() != &controls()) {
+		LOG(Camera, Error) << "Overwriting Request::controls() is not allowed";
+		return -EINVAL;
+	}
+
 	/*
 	 * The camera state may change until the end of the function. No locking
 	 * is however needed as PipelineHandler::queueRequest() will handle
@@ -1356,9 +1363,7 @@ int Camera::queueRequest(Request *request)
 		return -EINVAL;
 	}
 
-	for (auto const &it : request->buffers()) {
-		const Stream *stream = it.first;
-
+	for (const auto &[stream, buffer] : request->buffers()) {
 		if (d->activeStreams_.find(stream) == d->activeStreams_.end()) {
 			LOG(Camera, Error) << "Invalid request";
 			return -EINVAL;

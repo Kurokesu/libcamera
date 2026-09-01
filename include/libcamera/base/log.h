@@ -88,6 +88,19 @@ private:
 	std::string prefix_;
 };
 
+#ifndef __DOXYGEN__
+template<LogSeverity>
+struct LogMessageAbortGuard {
+};
+
+template<>
+struct LogMessageAbortGuard<LogFatal> {
+	LogMessageAbortGuard() = default;
+	LIBCAMERA_DISABLE_COPY_AND_MOVE(LogMessageAbortGuard)
+	[[noreturn]] ~LogMessageAbortGuard();
+};
+#endif
+
 class Loggable
 {
 public:
@@ -108,10 +121,29 @@ LogMessage _log(const LogCategory &category, LogSeverity severity,
 #ifndef __DOXYGEN__
 #define _LOG_CATEGORY(name) logCategory##name
 
+/* Returns `int` to avoid `-Wswitch-bool` below. */
+template<LogSeverity Severity>
+constexpr int isLogSeverityEnabled(const LogCategory &category)
+{
+	static_assert(LogDebug <= Severity && Severity <= LogFatal);
+
+	if constexpr (Severity < LogFatal)
+		return static_cast<unsigned int>(category.severity()) <= Severity;
+	else
+		return true;
+}
+
+#define _LOG(cat, sev)                                        \
+	switch (const auto &_logCategory = (cat);             \
+		isLogSeverityEnabled<Log##sev>(_logCategory)) \
+	case 1:                                               \
+		(LogMessageAbortGuard<Log##sev>(),            \
+		 _log(_logCategory, Log##sev).stream())
+
 #define _LOG1(severity) \
-	_log(LogCategory::defaultCategory(), Log##severity).stream()
+	_LOG(LogCategory::defaultCategory(), severity)
 #define _LOG2(category, severity) \
-	_log(_LOG_CATEGORY(category)(), Log##severity).stream()
+	_LOG(_LOG_CATEGORY(category)(), severity)
 
 /*
  * Expand the LOG() macro to _LOG1() or _LOG2() based on the number of
@@ -124,10 +156,11 @@ LogMessage _log(const LogCategory &category, LogSeverity severity,
 #endif /* __DOXYGEN__ */
 
 #ifndef NDEBUG
-#define ASSERT(condition) static_cast<void>(({                          \
-	if (!(condition))                                               \
-		LOG(Fatal) << "assertion \"" #condition "\" failed in " \
-			   << __func__ << "()";                         \
+#define ASSERT(condition) static_cast<void>(({                       \
+	if (!(condition))                                            \
+		LOG(Fatal)                                           \
+			<< "assertion \"" #condition "\" failed in " \
+			<< __func__ << "()";                         \
 }))
 #else
 #define ASSERT(condition) static_cast<void>(false && (condition))

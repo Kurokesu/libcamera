@@ -9,7 +9,6 @@
 
 #include <deque>
 #include <functional>
-#include <initializer_list>
 #include <map>
 #include <memory>
 #include <stdint.h>
@@ -37,7 +36,7 @@
 
 namespace libcamera {
 
-class DebayerCpu;
+class Debayer;
 class FrameBuffer;
 class PixelFormat;
 class Stream;
@@ -62,9 +61,10 @@ public:
 
 	std::tuple<unsigned int, unsigned int>
 	strideAndFrameSize(const PixelFormat &outputFormat, const Size &size);
+	uint32_t preferredInputStride(const PixelFormat &inputFormat, const Size &size);
 
 	int configure(const StreamConfiguration &inputCfg,
-		      const std::vector<std::reference_wrapper<StreamConfiguration>> &outputCfgs,
+		      const std::vector<std::reference_wrapper<const StreamConfiguration>> &outputCfgs,
 		      const ipa::soft::IPAConfigInfo &configInfo);
 
 	int exportBuffers(const Stream *stream, unsigned int count,
@@ -94,8 +94,7 @@ private:
 	void statsReady(uint32_t frame, uint32_t bufferId);
 	void inputReady(FrameBuffer *input);
 	void outputReady(FrameBuffer *output);
-
-	std::unique_ptr<DebayerCpu> debayer_;
+	std::unique_ptr<Debayer> debayer_;
 	Thread ispWorkerThread_;
 	SharedMemObject<DebayerParams> sharedParams_;
 	DebayerParams debayerParams_;

@@ -19,7 +19,6 @@
 #include <libcamera/control_ids.h>
 #include <libcamera/formats.h>
 #include <libcamera/property_ids.h>
-#include <libcamera/request.h>
 #include <libcamera/stream.h>
 
 #include <libcamera/ipa/ipu3_ipa_interface.h>
@@ -32,9 +31,9 @@
 #include "libcamera/internal/delayed_controls.h"
 #include "libcamera/internal/device_enumerator.h"
 #include "libcamera/internal/framebuffer.h"
-#include "libcamera/internal/ipa_manager.h"
 #include "libcamera/internal/media_device.h"
 #include "libcamera/internal/pipeline_handler.h"
+#include "libcamera/internal/request.h"
 
 #include "cio2.h"
 #include "frames.h"
@@ -164,8 +163,8 @@ private:
 
 	ImgUDevice imgu0_;
 	ImgUDevice imgu1_;
-	MediaDevice *cio2MediaDev_;
-	MediaDevice *imguMediaDev_;
+	std::shared_ptr<MediaDevice> cio2MediaDev_;
+	std::shared_ptr<MediaDevice> imguMediaDev_;
 
 	std::vector<IPABuffer> ipaBuffers_;
 };
@@ -678,15 +677,19 @@ int PipelineHandlerIPU3::allocateBuffers(Camera *camera)
 	/* Map buffers to the IPA. */
 	unsigned int ipaBufferId = 1;
 
-	for (const std::unique_ptr<FrameBuffer> &buffer : imgu->paramBuffers_) {
-		buffer->setCookie(ipaBufferId++);
-		ipaBuffers_.emplace_back(buffer->cookie(), buffer->planes());
-	}
+	auto pushBuffers = [&](const std::vector<std::unique_ptr<FrameBuffer>> &buffers) {
+		for (const std::unique_ptr<FrameBuffer> &buffer : buffers) {
+			Span<const FrameBuffer::Plane> planes = buffer->planes();
 
-	for (const std::unique_ptr<FrameBuffer> &buffer : imgu->statBuffers_) {
-		buffer->setCookie(ipaBufferId++);
-		ipaBuffers_.emplace_back(buffer->cookie(), buffer->planes());
-	}
+			buffer->setCookie(ipaBufferId++);
+			ipaBuffers_.emplace_back(buffer->cookie(),
+						 std::vector<FrameBuffer::Plane>{ planes.begin(),
+										  planes.end() });
+		}
+	};
+
+	pushBuffers(imgu->paramBuffers_);
+	pushBuffers(imgu->statBuffers_);
 
 	data->ipa_->mapBuffers(ipaBuffers_);
 
@@ -787,8 +790,7 @@ void IPU3CameraData::cancelPendingRequests()
 	while (!pendingRequests_.empty()) {
 		Request *request = pendingRequests_.front();
 
-		for (auto it : request->buffers()) {
-			FrameBuffer *buffer = it.second;
+		for (const auto &[stream, buffer] : request->buffers()) {
 			buffer->_d()->cancel();
 			pipe()->completeBuffer(request, buffer);
 		}
@@ -813,7 +815,7 @@ void IPU3CameraData::queuePendingRequests()
 		 * otherwise.
 		 */
 		FrameBuffer *reqRawBuffer = request->findBuffer(&rawStream_);
-		FrameBuffer *rawBuffer = cio2_.queueBuffer(request, reqRawBuffer);
+		FrameBuffer *rawBuffer = cio2_.queueBuffer(reqRawBuffer);
 		/*
 		 * \todo If queueBuffer fails in queuing a buffer to the device,
 		 * report the request as error by cancelling the request and
@@ -1148,7 +1150,7 @@ int PipelineHandlerIPU3::registerCameras()
 
 int IPU3CameraData::loadIPA()
 {
-	ipa_ = IPAManager::createIPA<ipa::ipu3::IPAProxyIPU3>(pipe(), 1, 1);
+	ipa_ = pipe()->createIPA<ipa::ipu3::IPAProxyIPU3>(1, 1);
 	if (!ipa_)
 		return -ENOENT;
 
@@ -1221,10 +1223,7 @@ void IPU3CameraData::paramsComputed(unsigned int id)
 		return;
 
 	/* Queue all buffers from the request aimed for the ImgU. */
-	for (auto it : info->request->buffers()) {
-		const Stream *stream = it.first;
-		FrameBuffer *outbuffer = it.second;
-
+	for (const auto &[stream, outbuffer] : info->request->buffers()) {
 		if (stream == &outStream_)
 			imgu_->output_->queueBuffer(outbuffer);
 		else if (stream == &vfStream_)
@@ -1245,7 +1244,7 @@ void IPU3CameraData::metadataReady(unsigned int id, const ControlList &metadata)
 		return;
 
 	Request *request = info->request;
-	request->metadata().merge(metadata);
+	request->_d()->metadata().merge(metadata);
 
 	info->metadataProcessed = true;
 	if (frameInfos_.tryComplete(info))
@@ -1272,12 +1271,12 @@ void IPU3CameraData::imguOutputBufferReady(FrameBuffer *buffer)
 
 	pipe()->completeBuffer(request, buffer);
 
-	request->metadata().set(controls::draft::PipelineDepth, 3);
+	request->_d()->metadata().set(controls::draft::PipelineDepth, 3);
 	/* \todo Actually apply the scaler crop region to the ImgU. */
 	const auto &scalerCrop = request->controls().get(controls::ScalerCrop);
 	if (scalerCrop)
 		cropRegion_ = *scalerCrop;
-	request->metadata().set(controls::ScalerCrop, cropRegion_);
+	request->_d()->metadata().set(controls::ScalerCrop, cropRegion_);
 
 	if (frameInfos_.tryComplete(info))
 		pipe()->completeRequest(request);
@@ -1300,8 +1299,7 @@ void IPU3CameraData::cio2BufferReady(FrameBuffer *buffer)
 
 	/* If the buffer is cancelled force a complete of the whole request. */
 	if (buffer->metadata().status == FrameMetadata::FrameCancelled) {
-		for (auto it : request->buffers()) {
-			FrameBuffer *b = it.second;
+		for (const auto &[stream, b] : request->buffers()) {
 			b->_d()->cancel();
 			pipe()->completeBuffer(request, b);
 		}
@@ -1317,8 +1315,8 @@ void IPU3CameraData::cio2BufferReady(FrameBuffer *buffer)
 	 * \todo The sensor timestamp should be better estimated by connecting
 	 * to the V4L2Device::frameStart signal.
 	 */
-	request->metadata().set(controls::SensorTimestamp,
-				buffer->metadata().timestamp);
+	request->_d()->metadata().set(controls::SensorTimestamp,
+				      buffer->metadata().timestamp);
 
 	info->effectiveSensorControls = delayedCtrls_->get(buffer->metadata().sequence);
 
@@ -1412,8 +1410,8 @@ void IPU3CameraData::frameStart(uint32_t sequence)
 		return;
 	}
 
-	request->metadata().set(controls::draft::TestPatternMode,
-				*testPatternMode);
+	request->_d()->metadata().set(controls::draft::TestPatternMode,
+				      *testPatternMode);
 }
 
 REGISTER_PIPELINE_HANDLER(PipelineHandlerIPU3, "ipu3")

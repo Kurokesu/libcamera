@@ -28,14 +28,12 @@ namespace libcamera {
 LOG_DECLARE_CATEGORY(DeviceEnumerator)
 
 DeviceEnumeratorUdev::DeviceEnumeratorUdev()
-	: udev_(nullptr), monitor_(nullptr), notifier_(nullptr)
+	: udev_(nullptr), monitor_(nullptr)
 {
 }
 
 DeviceEnumeratorUdev::~DeviceEnumeratorUdev()
 {
-	delete notifier_;
-
 	if (monitor_)
 		udev_monitor_unref(monitor_);
 	if (udev_)
@@ -76,6 +74,21 @@ int DeviceEnumeratorUdev::addUdevDevice(struct udev_device *dev)
 	if (!subsystem)
 		return -ENODEV;
 
+	/*
+	 * Record that udev reported the given devnum. And reject if it has
+	 * already been seen (e.g. device added between udev monitor creation
+	 * in `init()` and `enumerate()`). This record is kept even if later
+	 * in this function an error is encountered. Only a "remove" event
+	 * from udev should erase it from `devices_`.
+	 */
+	const dev_t devnum = udev_device_get_devnum(dev);
+	if (devnum == makedev(0, 0))
+		return -ENODEV;
+
+	const auto [it, inserted] = devices_.insert(devnum);
+	if (!inserted)
+		return -EEXIST;
+
 	if (!strcmp(subsystem, "media")) {
 		std::unique_ptr<MediaDevice> media =
 			createDevice(udev_device_get_devnode(dev));
@@ -111,11 +124,20 @@ int DeviceEnumeratorUdev::addUdevDevice(struct udev_device *dev)
 	}
 
 	if (!strcmp(subsystem, "video4linux")) {
-		addV4L2Device(udev_device_get_devnum(dev));
+		addV4L2Device(devnum);
 		return 0;
 	}
 
 	return -ENODEV;
+}
+
+void DeviceEnumeratorUdev::removeUdevDevice(struct udev_device *dev)
+{
+	const char *subsystem = udev_device_get_subsystem(dev);
+	if (subsystem && !strcmp(subsystem, "media"))
+		removeDevice(udev_device_get_devnode(dev));
+
+	devices_.erase(udev_device_get_devnum(dev));
 }
 
 int DeviceEnumeratorUdev::enumerate()
@@ -188,7 +210,7 @@ done:
 		return ret;
 
 	int fd = udev_monitor_get_fd(monitor_);
-	notifier_ = new EventNotifier(fd, EventNotifier::Read);
+	notifier_ = std::make_unique<EventNotifier>(fd, EventNotifier::Read);
 	notifier_->activated.connect(this, &DeviceEnumeratorUdev::udevNotify);
 
 	return 0;
@@ -341,18 +363,14 @@ void DeviceEnumeratorUdev::udevNotify()
 	}
 
 	std::string_view action(udev_device_get_action(dev));
-	std::string_view deviceNode(udev_device_get_devnode(dev));
 
 	LOG(DeviceEnumerator, Debug)
-		<< action << " device " << deviceNode;
+		<< action << " device " << udev_device_get_devnode(dev);
 
-	if (action == "add") {
+	if (action == "add")
 		addUdevDevice(dev);
-	} else if (action == "remove") {
-		const char *subsystem = udev_device_get_subsystem(dev);
-		if (subsystem && !strcmp(subsystem, "media"))
-			removeDevice(std::string(deviceNode));
-	}
+	else if (action == "remove")
+		removeUdevDevice(dev);
 
 	udev_device_unref(dev);
 }

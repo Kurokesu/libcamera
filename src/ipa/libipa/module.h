@@ -15,7 +15,7 @@
 #include <libcamera/base/log.h>
 #include <libcamera/base/utils.h>
 
-#include "libcamera/internal/yaml_parser.h"
+#include "libcamera/internal/value_node.h"
 
 #include "algorithm.h"
 
@@ -43,14 +43,14 @@ public:
 		return algorithms_;
 	}
 
-	int createAlgorithms(Context &context, const YamlObject &algorithms)
+	int createAlgorithms(Context &context, const ValueNode &algorithms)
 	{
 		const auto &list = algorithms.asList();
 
 		for (const auto &[i, algo] : utils::enumerate(list)) {
 			if (!algo.isDictionary()) {
 				LOG(IPAModuleAlgo, Error)
-					<< "Invalid YAML syntax for algorithm " << i;
+					<< "Invalid tuning data syntax for algorithm " << i;
 				algorithms_.clear();
 				return -EINVAL;
 			}
@@ -71,9 +71,21 @@ public:
 	}
 
 private:
-	int createAlgorithm(Context &context, const YamlObject &data)
+	int createAlgorithm(Context &context, const ValueNode &data)
 	{
 		const auto &[name, algoData] = *data.asDict().begin();
+
+		/*
+		 * Optionally, algorithms can be disabled via the tuning file
+		 * by including enabled: false as a parameter within the
+		 * algorithm tuning data. This is not an error, so we return 0.
+		 */
+		if (!algoData["enabled"].get<bool>(true)) {
+			LOG(IPAModuleAlgo, Info)
+				<< "Algorithm '" << name << "' disabled via tuning file";
+			return 0;
+		}
+
 		std::unique_ptr<Algorithm<Module>> algo = createAlgorithm(name);
 		if (!algo) {
 			LOG(IPAModuleAlgo, Error)

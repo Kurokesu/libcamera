@@ -7,16 +7,24 @@
 
 #pragma once
 
-#include "libcamera/internal/vector.h"
+#include <linux/rkisp1-config.h>
+
+#include <libcamera/controls.h>
+
+#include "libcamera/internal/value_node.h"
 
 #include "libipa/awb.h"
-#include "libipa/interpolator.h"
+#include "libipa/fixedpoint.h"
 
 #include "algorithm.h"
+#include "ipa_context.h"
+#include "params.h"
 
 namespace libcamera {
 
 namespace ipa::rkisp1::algorithms {
+
+class RkISP1AwbStats;
 
 class Awb : public Algorithm
 {
@@ -24,7 +32,7 @@ public:
 	Awb();
 	~Awb() = default;
 
-	int init(IPAContext &context, const YamlObject &tuningData) override;
+	int init(IPAContext &context, const ValueNode &tuningData) override;
 	int configure(IPAContext &context, const IPACameraSensorInfo &configInfo) override;
 	void queueRequest(IPAContext &context, const uint32_t frame,
 			  IPAFrameContext &frameContext,
@@ -38,10 +46,10 @@ public:
 		     ControlList &metadata) override;
 
 private:
-	RGB<double> calculateRgbMeans(const IPAFrameContext &frameContext,
-				      const rkisp1_cif_isp_awb_stat *awb) const;
+	RkISP1AwbStats calculateRgbMeans(const IPAFrameContext &frameContext,
+					 const rkisp1_cif_isp_awb_stat *awb) const;
 
-	std::unique_ptr<AwbAlgorithm> awbAlgo_;
+	AwbAlgorithm<UQ<2, 8>> awbAlgo_;
 
 	bool rgbMode_;
 };

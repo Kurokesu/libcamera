@@ -11,7 +11,6 @@
 #include <memory>
 #include <optional>
 #include <ostream>
-#include <queue>
 #include <stdint.h>
 #include <string>
 #include <unordered_set>
@@ -34,6 +33,7 @@
 #include "libcamera/internal/formats.h"
 #include "libcamera/internal/v4l2_device.h"
 #include "libcamera/internal/v4l2_pixelformat.h"
+#include "libcamera/internal/v4l2_request.h"
 
 namespace libcamera {
 
@@ -176,7 +176,7 @@ public:
 	Size size;
 	std::optional<ColorSpace> colorSpace;
 
-	std::array<Plane, 3> planes;
+	std::array<Plane, VIDEO_MAX_PLANES> planes;
 	unsigned int planesCount = 0;
 
 	std::string toString() const;
@@ -218,7 +218,7 @@ public:
 	int importBuffers(unsigned int count);
 	int releaseBuffers();
 
-	int queueBuffer(FrameBuffer *buffer);
+	int queueBuffer(FrameBuffer *buffer, const V4L2Request *request = nullptr);
 	Signal<FrameBuffer *> bufferReady;
 
 	int streamOn();
@@ -267,8 +267,6 @@ private:
 	void bufferAvailable();
 	FrameBuffer *dequeueBuffer();
 
-	int queueToDevice(FrameBuffer *buffer);
-
 	void watchdogExpired();
 
 	template<typename T>
@@ -282,11 +280,10 @@ private:
 	enum v4l2_buf_type bufferType_;
 	enum v4l2_memory memoryType_;
 
-	V4L2BufferCache *cache_;
+	std::unique_ptr<V4L2BufferCache> cache_;
 	std::map<unsigned int, FrameBuffer *> queuedBuffers_;
-	std::queue<FrameBuffer *> pendingBuffersToQueue_;
 
-	EventNotifier *fdBufferNotifier_;
+	std::unique_ptr<EventNotifier> fdBufferNotifier_;
 
 	State state_;
 	std::optional<unsigned int> firstFrame_;
@@ -304,14 +301,14 @@ public:
 	int open();
 	void close();
 
-	V4L2VideoDevice *output() { return output_; }
-	V4L2VideoDevice *capture() { return capture_; }
+	V4L2VideoDevice *output() { return output_.get(); }
+	V4L2VideoDevice *capture() { return capture_.get(); }
 
 private:
 	std::string deviceNode_;
 
-	V4L2VideoDevice *output_;
-	V4L2VideoDevice *capture_;
+	std::unique_ptr<V4L2VideoDevice> output_;
+	std::unique_ptr<V4L2VideoDevice> capture_;
 };
 
 } /* namespace libcamera */

@@ -10,6 +10,8 @@
 #include <array>
 #include <stdint.h>
 
+#include "libcamera/internal/vector.h"
+
 namespace libcamera {
 
 /**
@@ -21,17 +23,14 @@ namespace libcamera {
  */
 struct SwIspStats {
 	/**
-	 * \brief Holds the sum of all sampled red pixels
+	 * \brief True if the statistics buffer contains valid data, false if
+	 *        no statistics were generated for this frame
 	 */
-	uint64_t sumR_;
+	bool valid;
 	/**
-	 * \brief Holds the sum of all sampled green pixels
+	 * \brief Sums of colour channels of all the sampled pixels
 	 */
-	uint64_t sumG_;
-	/**
-	 * \brief Holds the sum of all sampled blue pixels
-	 */
-	uint64_t sumB_;
+	RGB<uint64_t> sum_;
 	/**
 	 * \brief Number of bins in the yHistogram
 	 */
@@ -41,7 +40,7 @@ struct SwIspStats {
 	 */
 	using Histogram = std::array<uint32_t, kYHistogramSize>;
 	/**
-	 * \brief A histogram of luminance values
+	 * \brief A histogram of luminance values of all the sampled pixels
 	 */
 	Histogram yHistogram;
 };

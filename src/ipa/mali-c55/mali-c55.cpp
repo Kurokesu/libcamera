@@ -5,15 +5,17 @@
  * Mali-C55 ISP image processing algorithms
  */
 
+#include <array>
 #include <map>
 #include <string.h>
 #include <vector>
 
-#include <linux/mali-c55-config.h>
+#include <linux/media/arm/mali-c55-config.h>
 #include <linux/v4l2-controls.h>
 
 #include <libcamera/base/file.h>
 #include <libcamera/base/log.h>
+#include <libcamera/base/span.h>
 
 #include <libcamera/control_ids.h>
 #include <libcamera/ipa/ipa_interface.h>
@@ -28,6 +30,7 @@
 #include "libipa/camera_sensor_helper.h"
 
 #include "ipa_context.h"
+#include "params.h"
 
 namespace libcamera {
 
@@ -98,6 +101,8 @@ std::string IPAMaliC55::logPrefix() const
 int IPAMaliC55::init(const IPASettings &settings, const IPAConfigInfo &ipaConfig,
 		     ControlInfoMap *ipaControls)
 {
+	context_.sensorInfo = ipaConfig.sensorInfo;
+
 	camHelper_ = CameraSensorHelperFactoryBase::create(settings.sensorModel);
 	if (!camHelper_) {
 		LOG(IPAMaliC55, Error)
@@ -115,7 +120,7 @@ int IPAMaliC55::init(const IPASettings &settings, const IPAConfigInfo &ipaConfig
 		return ret;
 	}
 
-	std::unique_ptr<libcamera::YamlObject> data = YamlParser::parse(file);
+	std::unique_ptr<ValueNode> data = YamlParser::parse(file);
 	if (!data)
 		return -EINVAL;
 
@@ -236,7 +241,7 @@ void IPAMaliC55::updateControls(const IPACameraSensorInfo &sensorInfo,
 
 	ctrlMap[&controls::FrameDurationLimits] = ControlInfo(frameDurations[0],
 							      frameDurations[1],
-							      frameDurations[2]);
+							      Span<const int64_t, 2>{ { frameDurations[2], frameDurations[2] } });
 
 	/*
 	 * Compute exposure time limits from the V4L2_CID_EXPOSURE control
@@ -261,7 +266,7 @@ void IPAMaliC55::updateControls(const IPACameraSensorInfo &sensorInfo,
 	 * Merge in any controls that we support either statically or from the
 	 * algorithms.
 	 */
-	ctrlMap.merge(context_.ctrlMap);
+	ctrlMap.insert(context_.ctrlMap.begin(), context_.ctrlMap.end());
 
 	*ipaControls = ControlInfoMap(std::move(ctrlMap), controls::controls);
 }
@@ -282,7 +287,7 @@ int IPAMaliC55::configure(const IPAConfigInfo &ipaConfig, uint8_t bayerOrder,
 				   static_cast<BayerFormat::Order>(bayerOrder));
 	updateControls(info, ipaConfig.sensorControls, ipaControls);
 
-	for (auto const &a : algorithms()) {
+	for (const auto &a : algorithms()) {
 		Algorithm *algo = static_cast<Algorithm *>(a.get());
 
 		int ret = algo->configure(context_, info);
@@ -321,7 +326,7 @@ void IPAMaliC55::queueRequest(const uint32_t request, const ControlList &control
 {
 	IPAFrameContext &frameContext = context_.frameContexts.alloc(request);
 
-	for (auto const &a : algorithms()) {
+	for (const auto &a : algorithms()) {
 		Algorithm *algo = static_cast<Algorithm *>(a.get());
 
 		algo->queueRequest(context_, request, frameContext, controls);
@@ -331,23 +336,13 @@ void IPAMaliC55::queueRequest(const uint32_t request, const ControlList &control
 void IPAMaliC55::fillParams(unsigned int request,
 			    [[maybe_unused]] uint32_t bufferId)
 {
-	struct mali_c55_params_buffer *params;
 	IPAFrameContext &frameContext = context_.frameContexts.get(request);
+	MaliC55Params params(buffers_.at(bufferId).planes()[0]);
 
-	params = reinterpret_cast<mali_c55_params_buffer *>(
-		buffers_.at(bufferId).planes()[0].data());
-	memset(params, 0, sizeof(mali_c55_params_buffer));
+	for (const auto &algo : algorithms())
+		algo->prepare(context_, request, frameContext, &params);
 
-	params->version = MALI_C55_PARAM_BUFFER_V1;
-
-	for (auto const &algo : algorithms()) {
-		algo->prepare(context_, request, frameContext, params);
-
-		ASSERT(params->total_size <= MALI_C55_PARAMS_MAX_SIZE);
-	}
-
-	size_t bytesused = offsetof(struct mali_c55_params_buffer, data) + params->total_size;
-	paramsComputed.emit(request, bytesused);
+	paramsComputed.emit(request, params.bytesused());
 }
 
 void IPAMaliC55::processStats(unsigned int request, unsigned int bufferId,
@@ -366,7 +361,7 @@ void IPAMaliC55::processStats(unsigned int request, unsigned int bufferId,
 
 	ControlList metadata(controls::controls);
 
-	for (auto const &a : algorithms()) {
+	for (const auto &a : algorithms()) {
 		Algorithm *algo = static_cast<Algorithm *>(a.get());
 
 		algo->process(context_, request, frameContext, stats, metadata);

@@ -7,6 +7,8 @@
 
 #include "agc.h"
 
+#include <algorithm>
+#include <cmath>
 #include <stdint.h>
 
 #include <libcamera/base/log.h>
@@ -37,53 +39,74 @@ static constexpr float kExposureOptimal = kExposureBinsCount / 2.0;
  */
 static constexpr float kExposureSatisfactory = 0.2;
 
+/*
+ * Proportional gain for exposure/gain adjustment. Maps the MSV error to a
+ * multiplicative correction factor:
+ *
+ *   factor = 1.0 + kExpProportionalGain * error
+ *
+ * With kExpProportionalGain = 0.04:
+ *   - max error ~2.5 -> factor 1.10 (~10% step, same as before)
+ *   - error 1.0      -> factor 1.04 (~4% step)
+ *   - error 0.3      -> factor 1.012 (~1.2% step)
+ *
+ * This replaces the fixed 10% bang-bang step with a proportional correction
+ * that converges smoothly and avoids overshooting near the target.
+ */
+static constexpr float kExpProportionalGain = 0.04;
+
+/*
+ * Maximum multiplicative step per frame, to bound the correction when the
+ * scene changes dramatically.
+ */
+static constexpr float kExpMaxStep = 0.15;
+
 Agc::Agc()
 {
 }
 
 void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV)
 {
-	/*
-	 * kExpDenominator of 10 gives ~10% increment/decrement;
-	 * kExpDenominator of 5 - about ~20%
-	 */
-	static constexpr uint8_t kExpDenominator = 10;
-	static constexpr uint8_t kExpNumeratorUp = kExpDenominator + 1;
-	static constexpr uint8_t kExpNumeratorDown = kExpDenominator - 1;
-
-	double next;
 	int32_t &exposure = frameContext.sensor.exposure;
 	double &again = frameContext.sensor.gain;
 
-	if (exposureMSV < kExposureOptimal - kExposureSatisfactory) {
-		next = exposure * kExpNumeratorUp / kExpDenominator;
-		if (next - exposure < 1)
-			exposure += 1;
-		else
-			exposure = next;
-		if (exposure >= context.configuration.agc.exposureMax) {
-			next = again * kExpNumeratorUp / kExpDenominator;
+	double error = kExposureOptimal - exposureMSV;
+
+	if (std::abs(error) <= kExposureSatisfactory)
+		return;
+
+	/*
+	 * Compute a proportional correction factor. The sign of the error
+	 * determines the direction: positive error means too dark (increase),
+	 * negative means too bright (decrease).
+	 */
+	float step = std::clamp(static_cast<float>(error) * kExpProportionalGain,
+				-kExpMaxStep, kExpMaxStep);
+	float factor = 1.0f + step;
+
+	if (factor > 1.0f) {
+		/* Scene too dark: increase exposure first, then gain. */
+		if (exposure < context.configuration.agc.exposureMax) {
+			int32_t next = static_cast<int32_t>(exposure * factor);
+			exposure = std::max(next, exposure + 1);
+		} else {
+			double next = again * factor;
 			if (next - again < context.configuration.agc.againMinStep)
 				again += context.configuration.agc.againMinStep;
 			else
 				again = next;
 		}
-	}
-
-	if (exposureMSV > kExposureOptimal + kExposureSatisfactory) {
-		if (exposure == context.configuration.agc.exposureMax &&
-		    again > context.configuration.agc.againMin) {
-			next = again * kExpNumeratorDown / kExpDenominator;
+	} else {
+		/* Scene too bright: decrease gain first, then exposure. */
+		if (again > context.configuration.agc.again10) {
+			double next = again * factor;
 			if (again - next < context.configuration.agc.againMinStep)
 				again -= context.configuration.agc.againMinStep;
 			else
 				again = next;
 		} else {
-			next = exposure * kExpNumeratorDown / kExpDenominator;
-			if (exposure - next < 1)
-				exposure -= 1;
-			else
-				exposure = next;
+			int32_t next = static_cast<int32_t>(exposure * factor);
+			exposure = std::min(next, exposure - 1);
 		}
 	}
 
@@ -92,8 +115,12 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, dou
 	again = std::clamp(again, context.configuration.agc.againMin,
 			   context.configuration.agc.againMax);
 
+	context.activeState.agc.exposure = exposure;
+	context.activeState.agc.again = again;
+
 	LOG(IPASoftExposure, Debug)
 		<< "exposureMSV " << exposureMSV
+		<< " error " << error << " factor " << factor
 		<< " exp " << exposure << " again " << again;
 }
 
@@ -107,6 +134,26 @@ void Agc::process(IPAContext &context,
 		context.configuration.agc.lineDuration * frameContext.sensor.exposure;
 	metadata.set(controls::ExposureTime, exposureTime.get<std::micro>());
 	metadata.set(controls::AnalogueGain, frameContext.sensor.gain);
+
+	if (!context.activeState.agc.valid) {
+		/*
+		 * Init active-state from sensor values in case updateExposure()
+		 * does not run for the first frame.
+		 */
+		context.activeState.agc.exposure = frameContext.sensor.exposure;
+		context.activeState.agc.again = frameContext.sensor.gain;
+		context.activeState.agc.valid = true;
+	}
+
+	if (!stats->valid) {
+		/*
+		 * Use the new exposure and gain values calculated the last time
+		 * there were valid stats.
+		 */
+		frameContext.sensor.exposure = context.activeState.agc.exposure;
+		frameContext.sensor.gain = context.activeState.agc.again;
+		return;
+	}
 
 	/*
 	 * Calculate Mean Sample Value (MSV) according to formula from:
@@ -123,6 +170,12 @@ void Agc::process(IPAContext &context,
 	int exposureBins[kExposureBinsCount] = {};
 	unsigned int denom = 0;
 	unsigned int num = 0;
+
+	if (yHistValsPerBin == 0) {
+		LOG(IPASoftExposure, Debug)
+			<< "Not adjusting exposure due to insufficient histogram data";
+		return;
+	}
 
 	for (unsigned int i = 0; i < histogramSize; i++) {
 		unsigned int idx = (i - (i / yHistValsPerBinMod)) / yHistValsPerBin;

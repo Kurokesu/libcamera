@@ -20,6 +20,7 @@
 #include <linux/media.h>
 
 #include <libcamera/base/log.h>
+#include "libcamera/internal/v4l2_request.h"
 
 /**
  * \file media_device.h
@@ -342,6 +343,32 @@ MediaEntity *MediaDevice::getEntityByName(const std::string &name) const
 }
 
 /**
+ * \brief Return the MediaEntity with name matching the regex \a name
+ * \param[in] name A regex to match the entity name
+ * \return The entity matching the regex \a name, or nullptr if no such entity
+ * is found or multiple entities match on \a name
+ */
+MediaEntity *MediaDevice::getEntityByName(const std::regex &name) const
+{
+	MediaEntity *entity = nullptr;
+
+	for (MediaEntity *e : entities_) {
+		if (!std::regex_search(e->name(), name))
+			continue;
+
+		if (entity) {
+			LOG(MediaDevice, Error)
+				<< "Multiple entities match given regex";
+			return nullptr;
+		}
+
+		entity = e;
+	}
+
+	return entity;
+}
+
+/**
  * \brief Retrieve the MediaLink connecting two pads, identified by entity
  * names and pad indexes
  * \param[in] sourceName The source entity name
@@ -562,7 +589,7 @@ bool MediaDevice::addObject(MediaObject *object)
  */
 void MediaDevice::clear()
 {
-	for (auto const &o : objects_)
+	for (const auto &o : objects_)
 		delete o.second;
 
 	objects_.clear();
@@ -849,6 +876,52 @@ std::vector<MediaEntity *> MediaDevice::locateEntities(unsigned int function)
 	}
 
 	return found;
+}
+
+/**
+ * \brief Allocate requests
+ * \param[in] count Number of requests to allocate
+ * \param[out] requests Vector to store allocated requests
+ *
+ * Allocates and stores \a count requests in \a requests. If allocation fails,
+ * an error is returned and \a requests is cleared.
+ *
+ * \return 0 on success or a negative error code otherwise
+ */
+int MediaDevice::allocateRequests(unsigned int count,
+				  std::vector<std::unique_ptr<V4L2Request>> *requests)
+{
+	requests->resize(count);
+	for (unsigned int i = 0; i < count; i++) {
+		int requestFd;
+		int ret = ::ioctl(fd_.get(), MEDIA_IOC_REQUEST_ALLOC, &requestFd);
+		if (ret < 0) {
+			requests->clear();
+			return -errno;
+		}
+		(*requests)[i] = std::make_unique<V4L2Request>(UniqueFD(requestFd));
+	}
+
+	return 0;
+}
+
+/**
+ * \brief Check if requests are supported
+ *
+ * Checks if the device supports V4L2 requests by trying to allocate a single
+ * request. The result is cached, so the allocation is only tried once.
+ *
+ * \return True if the device supports requests, false otherwise
+ */
+bool MediaDevice::supportsRequests()
+{
+	if (supportsRequests_.has_value())
+		return supportsRequests_.value();
+
+	std::vector<std::unique_ptr<V4L2Request>> requests;
+	supportsRequests_ = (allocateRequests(1, &requests) == 0);
+
+	return supportsRequests_.value();
 }
 
 } /* namespace libcamera */

@@ -49,6 +49,10 @@ if qt6_dep.version().version_compare('>=6.9.0') and \
     qt6_cpp_args += ['-Wno-shadow']
 endif
 
+if cxx.get_id() == 'gcc' and cxx.version().version_compare('>=16')
+    qt6_cpp_args += ['-Wno-sfinae-incomplete']
+endif
+
 resources = qt6.preprocess(moc_headers : qcam_moc_headers,
                            qresources : qcam_resources,
                            dependencies : qt6_dep)
@@ -64,3 +68,6 @@ qcam  = executable('qcam', qcam_sources, resources,
                        qt6_dep,
                    ],
                    cpp_args : qt6_cpp_args)
+
+# Note: qt6.preprocess does not automatically rebuild when the
+# qcam_resources dependency chain is updated.

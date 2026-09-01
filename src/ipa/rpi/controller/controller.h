@@ -16,7 +16,7 @@
 #include <string>
 
 #include <libcamera/base/utils.h>
-#include "libcamera/internal/yaml_parser.h"
+#include "libcamera/internal/value_node.h"
 
 #include "camera_mode.h"
 #include "device_status.h"
@@ -44,6 +44,7 @@ struct CnnOutputTensorInfo {
 	char networkName[NetworkNameLen];
 	uint32_t numTensors;
 	OutputTensorInfo info[MaxNumTensors];
+	uint8_t frameCount;
 };
 
 struct CnnInputTensorInfo {
@@ -51,6 +52,7 @@ struct CnnInputTensorInfo {
 	uint32_t width;
 	uint32_t height;
 	uint32_t numChannels;
+	uint8_t frameCount;
 };
 
 struct CnnKpiInfo {
@@ -98,7 +100,7 @@ public:
 	const HardwareConfig &getHardwareConfig() const;
 
 protected:
-	int createAlgorithm(const std::string &name, const libcamera::YamlObject &params);
+	int createAlgorithm(const std::string &name, const libcamera::ValueNode &params);
 
 	Metadata globalMetadata_;
 	std::vector<AlgorithmPtr> algorithms_;

@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2024, Ideas On Board Oy
  *
- * Mali C55 grey world auto white balance algorithm
+ * Mali C55 auto white balance algorithm
  */
 
 #include "awb.h"
@@ -14,83 +14,108 @@
 
 #include <libcamera/control_ids.h>
 
-#include "libipa/fixedpoint.h"
-
 namespace libcamera {
 
 namespace ipa::mali_c55::algorithms {
 
 LOG_DEFINE_CATEGORY(MaliC55Awb)
 
-/* Number of frames at which we should run AWB at full speed */
-static constexpr uint32_t kNumStartupFrames = 4;
+/* \todo Mali-C55 doesn't support the Lux algorithm. */
+static constexpr unsigned int kDefaultLux = 500;
 
-Awb::Awb()
+class MaliC55AwbStats final : public AwbStats
 {
+public:
+	MaliC55AwbStats() = default;
+	MaliC55AwbStats(const RGB<double> &rgbMeans)
+	{
+		/* The Mali-C55 ISP already provides stats as R/G and B/G ratios. */
+
+		rgbMeans_[0] = rgbMeans.r() * rgbMeans.g();
+		rgbMeans_[1] = 1.0;
+		rgbMeans_[2] = rgbMeans.b() * rgbMeans.g();
+
+		rg_ = rgbMeans_.r();
+		bg_ = rgbMeans_.b();
+	}
+
+	double computeColourError(const RGB<double> &gains) const override
+	{
+		/*
+		 * Compute the sum of the squared colour error (non-greyness) as
+		 * it appears in the log likelihood equation.
+		 */
+		double deltaR = gains.r() * rg_ - 1.0;
+		double deltaB = gains.b() * bg_ - 1.0;
+		double delta2 = deltaR * deltaR + deltaB * deltaB;
+
+		return delta2;
+	}
+
+	RGB<double> rgbMeans() const override
+	{
+		return rgbMeans_;
+	}
+
+	bool valid() const override
+	{
+		/* Minimum mean value below which AWB can't operate. */
+		constexpr double minValue = 0.2;
+
+		return rgbMeans_.r() > minValue || rgbMeans_.g() > minValue ||
+		       rgbMeans_.b() > minValue;
+	}
+
+private:
+	RGB<double> rgbMeans_;
+	double rg_;
+	double bg_;
+};
+
+/**
+ * \copydoc libcamera::ipa::Algorithm::init
+ */
+int Awb::init(IPAContext &context, const ValueNode &tuningData)
+{
+	return awbAlgo_.init(tuningData, context.ctrlMap);
 }
 
-int Awb::configure([[maybe_unused]] IPAContext &context,
+/**
+ * \copydoc libcamera::ipa::Algorithm::configure
+ */
+int Awb::configure(IPAContext &context,
 		   [[maybe_unused]] const IPACameraSensorInfo &configInfo)
 {
-	/*
-	 * Initially we have no idea what the colour balance will be like, so
-	 * for the first frame we will make no assumptions and leave the R/B
-	 * channels unmodified.
-	 */
-	context.activeState.awb.rGain = 1.0;
-	context.activeState.awb.bGain = 1.0;
-
-	return 0;
+	return awbAlgo_.configure(context.activeState.awb);
 }
 
-size_t Awb::fillGainsParamBlock(mali_c55_params_block block, IPAContext &context,
-				IPAFrameContext &frameContext)
+/**
+ * \copydoc libcamera::ipa::Algorithm::queueRequest
+ */
+void Awb::queueRequest(IPAContext &context,
+		       const uint32_t frame,
+		       IPAFrameContext &frameContext,
+		       const ControlList &controls)
 {
-	block.header->type = MALI_C55_PARAM_BLOCK_AWB_GAINS;
-	block.header->flags = MALI_C55_PARAM_BLOCK_FL_NONE;
-	block.header->size = sizeof(struct mali_c55_params_awb_gains);
-
-	double rGain = context.activeState.awb.rGain;
-	double bGain = context.activeState.awb.bGain;
-
-	/*
-	 * The gains here map as follows:
-	 *	gain00 = R
-	 *	gain01 = Gr
-	 *	gain10 = Gb
-	 *	gain11 = B
-	 *
-	 * This holds true regardless of the bayer order of the input data, as
-	 * the mapping is done internally in the ISP.
-	 */
-	block.awb_gains->gain00 = floatingToFixedPoint<4, 8, uint16_t, double>(rGain);
-	block.awb_gains->gain01 = floatingToFixedPoint<4, 8, uint16_t, double>(1.0);
-	block.awb_gains->gain10 = floatingToFixedPoint<4, 8, uint16_t, double>(1.0);
-	block.awb_gains->gain11 = floatingToFixedPoint<4, 8, uint16_t, double>(bGain);
-
-	frameContext.awb.rGain = rGain;
-	frameContext.awb.bGain = bGain;
-
-	return sizeof(struct mali_c55_params_awb_gains);
+	awbAlgo_.queueRequest(context.activeState.awb, frame, frameContext.awb,
+			      controls);
 }
 
-size_t Awb::fillConfigParamBlock(mali_c55_params_block block)
+void Awb::fillConfigParamBlock(MaliC55Params *params)
 {
-	block.header->type = MALI_C55_PARAM_BLOCK_AWB_CONFIG;
-	block.header->flags = MALI_C55_PARAM_BLOCK_FL_NONE;
-	block.header->size = sizeof(struct mali_c55_params_awb_config);
+	auto block = params->block<MaliC55Blocks::AwbConfig>();
 
 	/* Tap the stats after the purple fringe block */
-	block.awb_config->tap_point = MALI_C55_AWB_STATS_TAP_PF;
+	block->tap_point = MALI_C55_AWB_STATS_TAP_PF;
 
 	/* Get R/G and B/G ratios as statistics */
-	block.awb_config->stats_mode = MALI_C55_AWB_MODE_RGBG;
+	block->stats_mode = MALI_C55_AWB_MODE_RGBG;
 
 	/* Default white level */
-	block.awb_config->white_level = 1023;
+	block->white_level = 1023;
 
 	/* Default black level */
-	block.awb_config->black_level = 0;
+	block->black_level = 0;
 
 	/*
 	 * By default pixels are included who's colour ratios are bounded in a
@@ -104,81 +129,96 @@ size_t Awb::fillConfigParamBlock(mali_c55_params_block block)
 	 *
 	 * \todo should these perhaps be tunable?
 	 */
-	block.awb_config->cr_max = 511;
-	block.awb_config->cr_min = 64;
-	block.awb_config->cb_max = 511;
-	block.awb_config->cb_min = 64;
+	block->cr_max = 511;
+	block->cr_min = 64;
+	block->cb_max = 511;
+	block->cb_min = 64;
 
 	/* We use the full 15x15 zoning scheme */
-	block.awb_config->nodes_used_horiz = 15;
-	block.awb_config->nodes_used_vert = 15;
+	block->nodes_used_horiz = 15;
+	block->nodes_used_vert = 15;
 
 	/*
 	 * We set the trimming boundaries equivalent to the main boundaries. In
 	 * other words; no trimming.
 	 */
-	block.awb_config->cr_high = 511;
-	block.awb_config->cr_low = 64;
-	block.awb_config->cb_high = 511;
-	block.awb_config->cb_low = 64;
-
-	return sizeof(struct mali_c55_params_awb_config);
+	block->cr_high = 511;
+	block->cr_low = 64;
+	block->cb_high = 511;
+	block->cb_low = 64;
 }
 
+/**
+ * \copydoc libcamera::ipa::Algorithm::prepare
+ */
 void Awb::prepare(IPAContext &context, const uint32_t frame,
-		  IPAFrameContext &frameContext, mali_c55_params_buffer *params)
+		  IPAFrameContext &frameContext, MaliC55Params *params)
 {
-	mali_c55_params_block block;
-	block.data = &params->data[params->total_size];
+	awbAlgo_.prepare(context.activeState.awb, frameContext.awb);
 
-	params->total_size += fillGainsParamBlock(block, context, frameContext);
+	/*
+	 * The gains here map as follows:
+	 *	gain00 = R
+	 *	gain01 = Gr
+	 *	gain10 = Gb
+	 *	gain11 = B
+	 *
+	 * This holds true regardless of the bayer order of the input data, as
+	 * the mapping is done internally in the ISP.
+	 */
+	auto block = params->block<MaliC55Blocks::AwbGains>();
+	block.setEnabled(true);
+
+	block->gain00 = UQ<4, 8>(static_cast<float>(frameContext.awb.gains.r()))
+				.quantized();
+	block->gain01 = UQ<4, 8>(1.0f).quantized();
+	block->gain10 = UQ<4, 8>(1.0f).quantized();
+	block->gain11 = UQ<4, 8>(static_cast<float>(frameContext.awb.gains.b()))
+				.quantized();
 
 	if (frame > 0)
 		return;
 
-	block.data = &params->data[params->total_size];
-	params->total_size += fillConfigParamBlock(block);
+	fillConfigParamBlock(params);
 }
 
-void Awb::process(IPAContext &context, const uint32_t frame,
-		  IPAFrameContext &frameContext, const mali_c55_stats_buffer *stats,
-		  [[maybe_unused]] ControlList &metadata)
+MaliC55AwbStats Awb::calculateRgbMeans(const IPAFrameContext &frameContext,
+				       const mali_c55_stats_buffer *stats) const
 {
-	const struct mali_c55_awb_average_ratios *awb_ratios = stats->awb_ratios;
+	const struct mali_c55_awb_average_ratios *awb = stats->awb_ratios;
 
 	/*
 	 * The ISP produces average R:G and B:G ratios for zones. We take the
-	 * average of all the zones with data and simply invert them to provide
-	 * gain figures that we can apply to approximate a grey world.
+	 * average of all the zones with data and calculate the mean values.
 	 */
-	unsigned int counted_zones = 0;
+	unsigned int active_zones = 0;
 	double rgSum = 0, bgSum = 0;
 
 	for (unsigned int i = 0; i < 225; i++) {
-		if (!awb_ratios[i].num_pixels)
+		if (!awb[i].num_pixels)
 			continue;
 
 		/*
 		 * The statistics are in Q4.8 format, so we convert to double
 		 * here.
 		 */
-		rgSum += fixedToFloatingPoint<4, 8, double, uint16_t>(awb_ratios[i].avg_rg_gr);
-		bgSum += fixedToFloatingPoint<4, 8, double, uint16_t>(awb_ratios[i].avg_bg_br);
-		counted_zones++;
+		rgSum += UQ<4, 8>(awb[i].avg_rg_gr).value();
+		bgSum += UQ<4, 8>(awb[i].avg_bg_br).value();
+		active_zones++;
 	}
 
 	/*
 	 * Sometimes the first frame's statistics have no valid pixels, in which
 	 * case we'll just assume a grey world until they say otherwise.
 	 */
-	double rgAvg, bgAvg;
-	if (!counted_zones) {
-		rgAvg = 1.0;
-		bgAvg = 1.0;
-	} else {
-		rgAvg = rgSum / counted_zones;
-		bgAvg = bgSum / counted_zones;
-	}
+	if (!active_zones)
+		return {};
+
+	RGB<double> rgbMeans = { {
+		rgSum / active_zones,
+		1.0,
+		bgSum / active_zones,
+	} };
 
 	/*
 	 * The statistics are generated _after_ white balancing is performed in
@@ -186,41 +226,22 @@ void Awb::process(IPAContext &context, const uint32_t frame,
 	 * figure by the gains that were applied when the statistics for this
 	 * frame were generated.
 	 */
-	double rRatio = rgAvg / frameContext.awb.rGain;
-	double bRatio = bgAvg / frameContext.awb.bGain;
+	rgbMeans /= frameContext.awb.gains.max(0.01);
 
-	/*
-	 * And then we can simply invert the ratio to find the gain we should
-	 * apply.
-	 */
-	double rGain = 1 / rRatio;
-	double bGain = 1 / bRatio;
+	return MaliC55AwbStats(rgbMeans);
+}
 
-	/*
-	 * Running at full speed, this algorithm results in oscillations in the
-	 * colour balance. To remove those we dampen the speed at which it makes
-	 * changes in gain, unless we're in the startup phase in which case we
-	 * want to fix the miscolouring as quickly as possible.
-	 */
-	double speed = frame < kNumStartupFrames ? 1.0 : 0.2;
-	rGain = speed * rGain + context.activeState.awb.rGain * (1.0 - speed);
-	bGain = speed * bGain + context.activeState.awb.bGain * (1.0 - speed);
+/**
+ * \copydoc libcamera::ipa::Algorithm::process
+ */
+void Awb::process(IPAContext &context, [[maybe_unused]] const uint32_t frame,
+		  IPAFrameContext &frameContext, const mali_c55_stats_buffer *stats,
+		  ControlList &metadata)
+{
+	MaliC55AwbStats awbStats = calculateRgbMeans(frameContext, stats);
 
-	context.activeState.awb.rGain = rGain;
-	context.activeState.awb.bGain = bGain;
-
-	metadata.set(controls::ColourGains, {
-		static_cast<float>(frameContext.awb.rGain),
-		static_cast<float>(frameContext.awb.bGain),
-	});
-
-	LOG(MaliC55Awb, Debug) << "For frame number " << frame << ": "
-		<< "Average R/G Ratio: " << rgAvg
-		<< ", Average B/G Ratio: " << bgAvg
-		<< "\nrGain applied to this frame: " << frameContext.awb.rGain
-		<< ", bGain applied to this frame: " << frameContext.awb.bGain
-		<< "\nrGain to apply: " << context.activeState.awb.rGain
-		<< ", bGain to apply: " << context.activeState.awb.bGain;
+	awbAlgo_.process(context.activeState.awb, frameContext.awb, awbStats,
+			 kDefaultLux, metadata);
 }
 
 REGISTER_IPA_ALGORITHM(Awb, "Awb")

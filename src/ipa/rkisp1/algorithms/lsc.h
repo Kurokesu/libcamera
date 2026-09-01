@@ -7,9 +7,14 @@
 
 #pragma once
 
-#include <map>
+#include <vector>
 
-#include "libipa/interpolator.h"
+#include <linux/rkisp1-config.h>
+
+#include "libcamera/internal/value_node.h"
+#include "libipa/fixedpoint.h"
+
+#include "libipa/lsc.h"
 
 #include "algorithm.h"
 
@@ -23,30 +28,27 @@ public:
 	LensShadingCorrection();
 	~LensShadingCorrection() = default;
 
-	int init(IPAContext &context, const YamlObject &tuningData) override;
+	int init(IPAContext &context, const ValueNode &tuningData) override;
 	int configure(IPAContext &context, const IPACameraSensorInfo &configInfo) override;
+	void queueRequest(IPAContext &context, const uint32_t frame,
+			  IPAFrameContext &frameContext,
+			  const ControlList &controls) override;
 	void prepare(IPAContext &context, const uint32_t frame,
 		     IPAFrameContext &frameContext,
 		     RkISP1Params *params) override;
-
-	struct Components {
-		uint32_t ct;
-		std::vector<uint16_t> r;
-		std::vector<uint16_t> gr;
-		std::vector<uint16_t> gb;
-		std::vector<uint16_t> b;
-	};
-
+	void process(IPAContext &context, const uint32_t frame,
+		     IPAFrameContext &frameContext,
+		     const rkisp1_stat_buffer *stats,
+		     ControlList &metadata) override;
 private:
 	void setParameters(rkisp1_cif_isp_lsc_config &config);
-	void copyTable(rkisp1_cif_isp_lsc_config &config, const Components &set0);
-	void interpolateTable(rkisp1_cif_isp_lsc_config &config,
-			      const Components &set0, const Components &set1,
-			      const uint32_t ct);
+	void copyTable(rkisp1_cif_isp_lsc_config &config,
+		       const lsc::Components<uint16_t> &set);
 
-	ipa::Interpolator<Components> sets_;
 	std::vector<double> xSize_;
 	std::vector<double> ySize_;
+	std::vector<double> xPos_;
+	std::vector<double> yPos_;
 	uint16_t xGrad_[RKISP1_CIF_ISP_LSC_SECTORS_TBL_SIZE];
 	uint16_t yGrad_[RKISP1_CIF_ISP_LSC_SECTORS_TBL_SIZE];
 	uint16_t xSizes_[RKISP1_CIF_ISP_LSC_SECTORS_TBL_SIZE];
@@ -54,6 +56,8 @@ private:
 
 	unsigned int lastAppliedCt_;
 	unsigned int lastAppliedQuantizedCt_;
+
+	LscAlgorithm<UQ<2, 10>> lscAlgo_;
 };
 
 } /* namespace ipa::rkisp1::algorithms */

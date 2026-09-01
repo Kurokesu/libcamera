@@ -31,6 +31,7 @@ libcamera_internal_sources = files([
     'device_enumerator_sysfs.cpp',
     'dma_buf_allocator.cpp',
     'formats.cpp',
+    'global_configuration.cpp',
     'ipa_controls.cpp',
     'ipa_data_serializer.cpp',
     'ipa_interface.cpp',
@@ -53,8 +54,10 @@ libcamera_internal_sources = files([
     'sysfs.cpp',
     'v4l2_device.cpp',
     'v4l2_pixelformat.cpp',
+    'v4l2_request.cpp',
     'v4l2_subdevice.cpp',
     'v4l2_videodevice.cpp',
+    'value_node.cpp',
     'vector.cpp',
     'yaml_parser.cpp',
 ])
@@ -74,6 +77,7 @@ subdir('ipa')
 subdir('pipeline')
 subdir('proxy')
 subdir('sensor')
+subdir('shaders')
 subdir('software_isp')
 
 libdl = dependency('dl')

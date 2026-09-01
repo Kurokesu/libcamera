@@ -26,6 +26,7 @@
 #include "libcamera/internal/software_isp/swisp_stats.h"
 #include "libcamera/internal/yaml_parser.h"
 
+#include "algorithms/adjust.h"
 #include "libipa/camera_sensor_helper.h"
 
 #include "module.h"
@@ -117,7 +118,7 @@ int IPASoftSimple::init(const IPASettings &settings,
 		return ret;
 	}
 
-	std::unique_ptr<libcamera::YamlObject> data = YamlParser::parse(file);
+	std::unique_ptr<ValueNode> data = YamlParser::parse(file);
 	if (!data)
 		return -EINVAL;
 
@@ -158,6 +159,11 @@ int IPASoftSimple::init(const IPASettings &settings,
 		}
 
 		params_ = static_cast<DebayerParams *>(mem);
+		params_->blackLevel = { { 0.0, 0.0, 0.0 } };
+		params_->gamma = 1.0 / algorithms::kDefaultGamma;
+		params_->contrastExp = 1.0;
+		params_->gains = { { 1.0, 1.0, 1.0 } };
+		/* combinedMatrix is reset for each frame. */
 	}
 
 	{
@@ -216,10 +222,12 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
 
 	int32_t againMin = gainInfo.min().get<int32_t>();
 	int32_t againMax = gainInfo.max().get<int32_t>();
+	int32_t againDef = gainInfo.def().get<int32_t>();
 
 	if (camHelper_) {
 		context_.configuration.agc.againMin = camHelper_->gain(againMin);
 		context_.configuration.agc.againMax = camHelper_->gain(againMax);
+		context_.configuration.agc.again10 = std::max(context_.configuration.agc.againMin, 1.0);
 		context_.configuration.agc.againMinStep =
 			(context_.configuration.agc.againMax -
 			 context_.configuration.agc.againMin) /
@@ -235,27 +243,13 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
 				camHelper_->blackLevel().value() / 256;
 		}
 	} else {
-		/*
-		 * The camera sensor gain (g) is usually not equal to the value written
-		 * into the gain register (x). But the way how the AGC algorithm changes
-		 * the gain value to make the total exposure closer to the optimum
-		 * assumes that g(x) is not too far from linear function. If the minimal
-		 * gain is 0, the g(x) is likely to be far from the linear, like
-		 * g(x) = a / (b * x + c). To avoid unexpected changes to the gain by
-		 * the AGC algorithm (abrupt near one edge, and very small near the
-		 * other) we limit the range of the gain values used.
-		 */
 		context_.configuration.agc.againMax = againMax;
-		if (!againMin) {
-			LOG(IPASoft, Warning)
-				<< "Minimum gain is zero, that can't be linear";
-			context_.configuration.agc.againMin =
-				std::min(100, againMin / 2 + againMax / 2);
-		}
+		context_.configuration.agc.again10 = againDef;
+		context_.configuration.agc.againMin = againMin;
 		context_.configuration.agc.againMinStep = 1.0;
 	}
 
-	for (auto const &algo : algorithms()) {
+	for (const auto &algo : algorithms()) {
 		int ret = algo->configure(context_, configInfo);
 		if (ret)
 			return ret;
@@ -285,15 +279,19 @@ void IPASoftSimple::queueRequest(const uint32_t frame, const ControlList &contro
 {
 	IPAFrameContext &frameContext = context_.frameContexts.alloc(frame);
 
-	for (auto const &algo : algorithms())
+	for (const auto &algo : algorithms())
 		algo->queueRequest(context_, frame, frameContext, controls);
 }
 
 void IPASoftSimple::computeParams(const uint32_t frame)
 {
+	context_.activeState.combinedMatrix = Matrix<float, 3, 3>::identity();
+
 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
-	for (auto const &algo : algorithms())
+	for (const auto &algo : algorithms())
 		algo->prepare(context_, frame, frameContext, params_);
+	params_->combinedMatrix = context_.activeState.combinedMatrix;
+
 	setIspParams.emit();
 }
 
@@ -309,7 +307,7 @@ void IPASoftSimple::processStats(const uint32_t frame,
 	frameContext.sensor.gain = camHelper_ ? camHelper_->gain(again) : again;
 
 	ControlList metadata(controls::controls);
-	for (auto const &algo : algorithms())
+	for (const auto &algo : algorithms())
 		algo->process(context_, frame, frameContext, stats_, metadata);
 	metadataReady.emit(frame, metadata);
 

@@ -132,6 +132,29 @@ double CameraSensorHelper::gain(uint32_t gainCode) const
 }
 
 /**
+ * \brief Quantize the given gain value
+ * \param[in] _gain The real gain
+ * \param[out] quantizationGain The gain that is lost due to quantization
+ *
+ * This function returns the actual gain that is applied when the sensor's gain
+ * is set to gainCode(_gain).
+ *
+ * It shall be guaranteed that gainCode(_gain) == gainCode(quantizeGain(_gain)).
+ *
+ * If \a quantizationGain is provided it is populated with the gain that must be
+ * applied on top to correct for the losses due to quantization.
+ *
+ * \return The quantized real gain
+ */
+double CameraSensorHelper::quantizeGain(double _gain, double *quantizationGain) const
+{
+	double g = gain(gainCode(_gain));
+	if (quantizationGain)
+		*quantizationGain = _gain / g;
+	return g;
+}
+
+/**
  * \struct CameraSensorHelper::AnalogueGainLinear
  * \brief Analogue gain constants for the linear gain model
  *
@@ -497,6 +520,16 @@ public:
 };
 REGISTER_CAMERA_SENSOR_HELPER("gc08a3", CameraSensorHelperGc08a3)
 
+class CameraSensorHelperHm1246 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperHm1246()
+	{
+		gain_ = AnalogueGainLinear{ 1, 16, 0, 16 };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("hm1246", CameraSensorHelperHm1246)
+
 class CameraSensorHelperImx214 : public CameraSensorHelper
 {
 public:
@@ -584,6 +617,18 @@ public:
 };
 REGISTER_CAMERA_SENSOR_HELPER("imx335", CameraSensorHelperImx335)
 
+class CameraSensorHelperImx355 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperImx355()
+	{
+		/* From datasheet: 64 at 10bits. */
+		blackLevel_ = 4096;
+		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("imx355", CameraSensorHelperImx355)
+
 class CameraSensorHelperImx415 : public CameraSensorHelper
 {
 public:
@@ -599,6 +644,19 @@ class CameraSensorHelperImx462 : public CameraSensorHelperImx290
 };
 REGISTER_CAMERA_SENSOR_HELPER("imx462", CameraSensorHelperImx462)
 
+class CameraSensorHelperImx471 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperImx471()
+	{
+		/* Measured: 64 DN at 10-bit; */
+		blackLevel_ = 4096;
+		/* gain = 1024/(1024 - code); code = [0, 800]; max gain = x4.57 */
+		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("imx471", CameraSensorHelperImx471)
+
 class CameraSensorHelperImx477 : public CameraSensorHelper
 {
 public:
@@ -608,6 +666,76 @@ public:
 	}
 };
 REGISTER_CAMERA_SENSOR_HELPER("imx477", CameraSensorHelperImx477)
+
+class CameraSensorHelperImx662 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperImx662()
+	{
+		/* From datasheet: 0xc8 at 12bits. */
+		blackLevel_ = 3200;
+		gain_ = AnalogueGainExp{ 1.0, expGainDb(0.3) };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("imx662", CameraSensorHelperImx662)
+
+class CameraSensorHelperImx678 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperImx678()
+	{
+		/* From datasheet: 0x32 at 10bits. */
+		blackLevel_ = 3200;
+		gain_ = AnalogueGainExp{ 1.0, expGainDb(0.3) };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("imx678", CameraSensorHelperImx678)
+
+class CameraSensorHelperImx708 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperImx708()
+	{
+		blackLevel_ = 4096;
+		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("imx708", CameraSensorHelperImx708)
+
+class CameraSensorHelperOv01a10 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperOv01a10()
+	{
+		/* From dark frame measurement: 0x40 at 10bits. */
+		blackLevel_ = 4096;
+		gain_ = AnalogueGainLinear{ 1, 0, 0, 256 };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("ov01a10", CameraSensorHelperOv01a10)
+
+class CameraSensorHelperOv08d10 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperOv08d10()
+	{
+		/* From Linux kernel driver: 0x40 at 10bits. */
+		blackLevel_ = 4096;
+		gain_ = AnalogueGainLinear{ 1, 0, 0, 128 };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("ov08d10", CameraSensorHelperOv08d10)
+
+class CameraSensorHelperOv08x40 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperOv08x40()
+	{
+		blackLevel_ = 4096;
+		gain_ = AnalogueGainLinear{ 1, 0, 0, 128 };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("ov08x40", CameraSensorHelperOv08x40)
 
 class CameraSensorHelperOv2685 : public CameraSensorHelper
 {
@@ -628,6 +756,8 @@ class CameraSensorHelperOv2740 : public CameraSensorHelper
 public:
 	CameraSensorHelperOv2740()
 	{
+		/* From Linux kernel driver: 0x40 at 10bits. */
+		blackLevel_ = 4096;
 		gain_ = AnalogueGainLinear{ 1, 0, 0, 128 };
 	}
 };
@@ -694,6 +824,7 @@ class CameraSensorHelperOv5693 : public CameraSensorHelper
 public:
 	CameraSensorHelperOv5693()
 	{
+		blackLevel_ = 1024;
 		gain_ = AnalogueGainLinear{ 1, 0, 0, 16 };
 	}
 };
@@ -744,6 +875,18 @@ public:
 	}
 };
 REGISTER_CAMERA_SENSOR_HELPER("ov13858", CameraSensorHelperOv13858)
+
+class CameraSensorHelperVd55g1 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperVd55g1()
+	{
+		/* From datasheet: 0x40 at 10bits. */
+		blackLevel_ = 4096;
+		gain_ = AnalogueGainLinear{ 0, 32, -1, 32 };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("vd55g1", CameraSensorHelperVd55g1)
 
 class CameraSensorHelperVd56g3 : public CameraSensorHelper
 {

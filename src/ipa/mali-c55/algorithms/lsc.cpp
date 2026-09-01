@@ -7,7 +7,8 @@
 
 #include "lsc.h"
 
-#include "libcamera/internal/yaml_parser.h"
+#include <libcamera/base/log.h>
+#include <libcamera/base/utils.h>
 
 namespace libcamera {
 
@@ -15,31 +16,68 @@ namespace ipa::mali_c55::algorithms {
 
 LOG_DEFINE_CATEGORY(MaliC55Lsc)
 
-int Lsc::init([[maybe_unused]] IPAContext &context, const YamlObject &tuningData)
+/* Gain values in [1, 5] range */
+static constexpr unsigned int kMeshScale = 6;
+
+/* Mali-C55 hw supports configurable mesh sizes; we fix it to 32. */
+static constexpr unsigned int kMeshSize = 32;
+static constexpr unsigned int kGridSize = kMeshSize * kMeshSize;
+
+/* Per-colour component page offsets in the mesh table. */
+static constexpr unsigned int kRedOffset = 0;
+static constexpr unsigned int kGreenOffset = 1024;
+static constexpr unsigned int kBlueOffset = 2048;
+
+/*
+ * \todo Clarify if Mali-C55 can support up to 4 colour temperatures.
+ *
+ * The uAPI only expose MALI_C55_NUM_MESH_SHADING_ELEMENTS (3072) gain elements,
+ * which correspond to three pages of 1024 (32x32) entries.
+ */
+static constexpr unsigned int kMaxColourTemperatures = 3;
+
+/*
+ * The LSC algorithm implementation only supports 32x32 grids. Create a list of
+ * positions from the grid size.
+ */
+std::vector<double> Lsc::segmentsToPosition() const
 {
-	if (!tuningData.contains("meshScale")) {
-		LOG(MaliC55Lsc, Error) << "meshScale missing from tuningData";
-		return -EINVAL;
-	}
+	std::vector<double> positions(kMeshSize);
+	for (double i = 0.0; i < kMeshSize; ++i)
+		positions[i] = i / (kMeshSize - 1);
 
-	meshScale_ = tuningData["meshScale"].get<uint32_t>(0);
+	return positions;
+}
 
-	const YamlObject &yamlSets = tuningData["sets"];
-	if (!yamlSets.isList()) {
-		LOG(MaliC55Lsc, Error) << "LSC tables missing or invalid";
-		return -EINVAL;
-	}
+int Lsc::init(IPAContext &context, const ValueNode &tuningData)
+{
+	gridPos_ = segmentsToPosition();
 
-	size_t tableSize = 0;
-	const auto &sets = yamlSets.asList();
-	for (const auto &yamlSet : sets) {
-		uint32_t ct = yamlSet["ct"].get<uint32_t>(0);
+	return lscAlgo_.init(tuningData, context.ctrlMap, {
+				.keys = { "r", "g", "b" },
+				.numHSamples = kMeshSize,
+				.numVSamples = kMeshSize,
+				.sensorSize = context.sensorInfo.activeAreaSize
+			     });
+}
 
-		if (!ct) {
-			LOG(MaliC55Lsc, Error) << "Invalid colour temperature";
-			return -EINVAL;
-		}
+int Lsc::configure(IPAContext &context, const IPACameraSensorInfo &configInfo)
+{
+	int ret = lscAlgo_.configure(context.activeState.lsc, configInfo.analogCrop,
+				     gridPos_, gridPos_);
+	if (ret)
+		return ret;
 
+	/* Re-initialize the mesh tables and reserve space for enough entries. */
+	mesh_ = std::vector<uint32_t>(kGridSize * kMaxColourTemperatures);
+	colourTemperatures_.clear();
+
+	/*
+	 * Get the lsc tables per colour components and populate mesh_ with
+	 * their content.
+	 */
+	auto &components = lscAlgo_.getComponents();
+	for (auto const &[ct, component] : components) {
 		if (std::count(colourTemperatures_.begin(),
 			       colourTemperatures_.end(), ct)) {
 			LOG(MaliC55Lsc, Error)
@@ -47,44 +85,26 @@ int Lsc::init([[maybe_unused]] IPAContext &context, const YamlObject &tuningData
 			return -EINVAL;
 		}
 
-		std::vector<uint8_t> rTable =
-			yamlSet["r"].getList<uint8_t>().value_or(std::vector<uint8_t>{});
-		std::vector<uint8_t> gTable =
-			yamlSet["g"].getList<uint8_t>().value_or(std::vector<uint8_t>{});
-		std::vector<uint8_t> bTable =
-			yamlSet["b"].getList<uint8_t>().value_or(std::vector<uint8_t>{});
+		const std::vector<uint8_t> &rTable = component.at("r");
+		const std::vector<uint8_t> &gTable = component.at("g");
+		const std::vector<uint8_t> &bTable = component.at("b");
 
-		/*
-		 * Some validation to do; only 16x16 and 32x32 tables of
-		 * coefficients are acceptable, and all tables across all of the
-		 * sets must be the same size. The first time we encounter a
-		 * table we check that it is an acceptable size and if so make
-		 * sure all other tables are of equal size.
-		 */
-		if (!tableSize) {
-			if (rTable.size() != 256 && rTable.size() != 1024) {
-				LOG(MaliC55Lsc, Error)
-					<< "Invalid table size for colour temperature " << ct;
-				return -EINVAL;
-			}
-			tableSize = rTable.size();
-		}
+		/* Only 32x32 tables of coefficients are accepted. */
+		ASSERT(rTable.size() == kGridSize &&
+		       gTable.size() == kGridSize &&
+		       bTable.size() != kGridSize);
 
-		if (rTable.size() != tableSize ||
-		    gTable.size() != tableSize ||
-		    bTable.size() != tableSize) {
-			LOG(MaliC55Lsc, Error)
-				<< "Invalid or mismatched table size for colour temperature " << ct;
-			return -EINVAL;
-		}
-
-		if (colourTemperatures_.size() >= 3) {
+		if (colourTemperatures_.size() >= kMaxColourTemperatures) {
 			LOG(MaliC55Lsc, Error)
 				<< "A maximum of 3 colour temperatures are supported";
 			return -EINVAL;
 		}
 
-		for (unsigned int i = 0; i < tableSize; i++) {
+		/*
+		 * Create the mesh table entries by assembling up to 3 gains per
+		 * colour temperature in a u32 word.
+		 */
+		for (unsigned int i = 0; i < kGridSize; i++) {
 			mesh_[kRedOffset + i] |=
 				(rTable[i] << (colourTemperatures_.size() * 8));
 			mesh_[kGreenOffset + i] |=
@@ -96,53 +116,46 @@ int Lsc::init([[maybe_unused]] IPAContext &context, const YamlObject &tuningData
 		colourTemperatures_.push_back(ct);
 	}
 
-	/*
-	 * The mesh has either 16x16 or 32x32 nodes, we tell the driver which it
-	 * is based on the number of values in the tuning data's table.
-	 */
-	if (tableSize == 256)
-		meshSize_ = 15;
-	else
-		meshSize_ = 31;
-
 	return 0;
 }
 
-size_t Lsc::fillConfigParamsBlock(mali_c55_params_block block) const
+/**
+ * \copydoc libcamera::ipa::Algorithm::queueRequest
+ */
+void Lsc::queueRequest(IPAContext &context, [[maybe_unused]] const uint32_t frame,
+		       IPAFrameContext &frameContext, const ControlList &controls)
 {
-	block.header->type = MALI_C55_PARAM_MESH_SHADING_CONFIG;
-	block.header->flags = MALI_C55_PARAM_BLOCK_FL_NONE;
-	block.header->size = sizeof(struct mali_c55_params_mesh_shading_config);
-
-	block.shading_config->mesh_show = false;
-	block.shading_config->mesh_scale = meshScale_;
-	block.shading_config->mesh_page_r = 0;
-	block.shading_config->mesh_page_g = 1;
-	block.shading_config->mesh_page_b = 2;
-	block.shading_config->mesh_width = meshSize_;
-	block.shading_config->mesh_height = meshSize_;
-
-	std::copy(mesh_.begin(), mesh_.end(), block.shading_config->mesh);
-
-	return block.header->size;
+	lscAlgo_.queueRequest(context.activeState.lsc, frameContext.lsc,
+			      controls);
 }
 
-size_t Lsc::fillSelectionParamsBlock(mali_c55_params_block block, uint8_t bank,
-				     uint8_t alpha) const
+void Lsc::fillConfigParamsBlock(MaliC55Params *params) const
 {
-	block.header->type = MALI_C55_PARAM_MESH_SHADING_SELECTION;
-	block.header->flags = MALI_C55_PARAM_BLOCK_FL_NONE;
-	block.header->size = sizeof(struct mali_c55_params_mesh_shading_selection);
+	auto block = params->block<MaliC55Blocks::MeshShadingConfig>();
 
-	block.shading_selection->mesh_alpha_bank_r = bank;
-	block.shading_selection->mesh_alpha_bank_g = bank;
-	block.shading_selection->mesh_alpha_bank_b = bank;
-	block.shading_selection->mesh_alpha_r = alpha;
-	block.shading_selection->mesh_alpha_g = alpha;
-	block.shading_selection->mesh_alpha_b = alpha;
-	block.shading_selection->mesh_strength = 0x1000; /* Otherwise known as 1.0 */
+	block->mesh_show = false;
+	block->mesh_scale = kMeshScale;
+	block->mesh_page_r = 0;
+	block->mesh_page_g = 1;
+	block->mesh_page_b = 2;
+	block->mesh_width = kMeshSize - 1;
+	block->mesh_height = kMeshSize - 1;
 
-	return block.header->size;
+	std::copy(mesh_.begin(), mesh_.end(), block->mesh);
+}
+
+void Lsc::fillSelectionParamsBlock(MaliC55Params *params, uint8_t bank,
+				   uint8_t alpha) const
+{
+	auto block = params->block<MaliC55Blocks::MeshShadingSel>();
+
+	block->mesh_alpha_bank_r = bank;
+	block->mesh_alpha_bank_g = bank;
+	block->mesh_alpha_bank_b = bank;
+	block->mesh_alpha_r = alpha;
+	block->mesh_alpha_g = alpha;
+	block->mesh_alpha_b = alpha;
+	block->mesh_strength = 0x1000; /* Otherwise known as 1.0 */
 }
 
 std::tuple<uint8_t, uint8_t> Lsc::findBankAndAlpha(uint32_t ct) const
@@ -170,7 +183,7 @@ std::tuple<uint8_t, uint8_t> Lsc::findBankAndAlpha(uint32_t ct) const
 
 void Lsc::prepare(IPAContext &context, [[maybe_unused]] const uint32_t frame,
 		  [[maybe_unused]] IPAFrameContext &frameContext,
-		  mali_c55_params_buffer *params)
+		  MaliC55Params *params)
 {
 	/*
 	 * For each frame we assess the colour temperature of the **last** frame
@@ -193,10 +206,7 @@ void Lsc::prepare(IPAContext &context, [[maybe_unused]] const uint32_t frame,
 		std::tie(bank, alpha) = findBankAndAlpha(temperatureK);
 	}
 
-	mali_c55_params_block block;
-	block.data = &params->data[params->total_size];
-
-	params->total_size += fillSelectionParamsBlock(block, bank, alpha);
+	fillSelectionParamsBlock(params, bank, alpha);
 
 	if (frame > 0)
 		return;
@@ -205,8 +215,19 @@ void Lsc::prepare(IPAContext &context, [[maybe_unused]] const uint32_t frame,
 	 * If this is the first frame, we need to load the parsed coefficient
 	 * tables from tuning data to the ISP.
 	 */
-	block.data = &params->data[params->total_size];
-	params->total_size += fillConfigParamsBlock(block);
+	fillConfigParamsBlock(params);
+}
+
+/**
+ * \copydoc libcamera::ipa::Algorithm::process
+ */
+void Lsc::process([[maybe_unused]] IPAContext &context,
+		  [[maybe_unused]] const uint32_t frame,
+		  IPAFrameContext &frameContext,
+		  [[maybe_unused]] const mali_c55_stats_buffer *stats,
+		  ControlList &metadata)
+{
+	lscAlgo_.process(frameContext.lsc, metadata);
 }
 
 REGISTER_IPA_ALGORITHM(Lsc, "Lsc")

@@ -16,10 +16,11 @@
 
 #include <libcamera/controls.h>
 
-#include "libcamera/internal/yaml_parser.h"
+#include "libcamera/internal/value_node.h"
 
 #include "exposure_mode_helper.h"
 #include "histogram.h"
+#include "pwl.h"
 
 namespace libcamera {
 
@@ -39,25 +40,31 @@ public:
 		Bound bound;
 		double qLo;
 		double qHi;
-		double yTarget;
+		Pwl yTarget;
 	};
 
-	int parseTuningData(const YamlObject &tuningData);
+	void configure(utils::Duration lineDuration, const CameraSensorHelper *sensorHelper);
+	int parseTuningData(const ValueNode &tuningData);
 
 	void setExposureCompensation(double gain)
 	{
 		exposureCompensation_ = gain;
 	}
 
-	void setLimits(utils::Duration minExposureTime, utils::Duration maxExposureTime,
-		       double minGain, double maxGain);
+	void setLux(unsigned int lux)
+	{
+		lux_ = lux;
+	}
 
-	std::map<int32_t, std::vector<AgcConstraint>> constraintModes()
+	void setLimits(utils::Duration minExposureTime, utils::Duration maxExposureTime,
+		       double minGain, double maxGain, std::vector<AgcConstraint> constraints);
+
+	const std::map<int32_t, std::vector<AgcConstraint>> &constraintModes() const
 	{
 		return constraintModes_;
 	}
 
-	std::map<int32_t, std::shared_ptr<ExposureModeHelper>> exposureModeHelpers()
+	const std::map<int32_t, std::shared_ptr<ExposureModeHelper>> &exposureModeHelpers() const
 	{
 		return exposureModeHelpers_;
 	}
@@ -67,9 +74,11 @@ public:
 		return controls_;
 	}
 
-	std::tuple<utils::Duration, double, double>
+	std::tuple<utils::Duration, double, double, double>
 	calculateNewEv(uint32_t constraintModeIndex, uint32_t exposureModeIndex,
 		       const Histogram &yHist, utils::Duration effectiveExposureValue);
+
+	double effectiveYTarget() const;
 
 	void resetFrameCount()
 	{
@@ -79,21 +88,24 @@ public:
 private:
 	virtual double estimateLuminance(const double gain) const = 0;
 
-	void parseRelativeLuminanceTarget(const YamlObject &tuningData);
-	void parseConstraint(const YamlObject &modeDict, int32_t id);
-	int parseConstraintModes(const YamlObject &tuningData);
-	int parseExposureModes(const YamlObject &tuningData);
+	int parseRelativeLuminanceTarget(const ValueNode &tuningData);
+	int parseConstraint(const ValueNode &modeDict, int32_t id);
+	int parseConstraintModes(const ValueNode &tuningData);
+	int parseExposureModes(const ValueNode &tuningData);
 	double estimateInitialGain() const;
 	double constraintClampGain(uint32_t constraintModeIndex,
 				   const Histogram &hist,
 				   double gain);
 	utils::Duration filterExposure(utils::Duration exposureValue);
 
-	double exposureCompensation_;
-	uint64_t frameCount_;
 	utils::Duration filteredExposure_;
-	double relativeLuminanceTarget_;
+	mutable bool luxWarningEnabled_;
+	double exposureCompensation_;
+	Pwl relativeLuminanceTarget_;
+	uint64_t frameCount_;
+	unsigned int lux_;
 
+	std::vector<AgcConstraint> additionalConstraints_;
 	std::map<int32_t, std::vector<AgcConstraint>> constraintModes_;
 	std::map<int32_t, std::shared_ptr<ExposureModeHelper>> exposureModeHelpers_;
 	ControlInfoMap::Map controls_;

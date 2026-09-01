@@ -29,11 +29,9 @@ using namespace std::literals::chrono_literals;
 
 LOG_DECLARE_CATEGORY(RPiAgc)
 
-int AgcMeteringMode::read(const libcamera::YamlObject &params)
+int AgcMeteringMode::read(const libcamera::ValueNode &params)
 {
-	const YamlObject &yamlWeights = params["weights"];
-
-	for (const auto &p : yamlWeights.asList()) {
+	for (const auto &p : params["weights"].asList()) {
 		auto value = p.get<double>();
 		if (!value)
 			return -EINVAL;
@@ -45,7 +43,7 @@ int AgcMeteringMode::read(const libcamera::YamlObject &params)
 
 static std::tuple<int, std::string>
 readMeteringModes(std::map<std::string, AgcMeteringMode> &metering_modes,
-		  const libcamera::YamlObject &params)
+		  const libcamera::ValueNode &params)
 {
 	std::string first;
 	int ret;
@@ -64,15 +62,15 @@ readMeteringModes(std::map<std::string, AgcMeteringMode> &metering_modes,
 	return { 0, first };
 }
 
-int AgcExposureMode::read(const libcamera::YamlObject &params)
+int AgcExposureMode::read(const libcamera::ValueNode &params)
 {
-	auto value = params["shutter"].getList<double>();
+	auto value = params["shutter"].get<std::vector<double>>();
 	if (!value)
 		return -EINVAL;
 	std::transform(value->begin(), value->end(), std::back_inserter(exposureTime),
 		       [](double v) { return v * 1us; });
 
-	value = params["gain"].getList<double>();
+	value = params["gain"].get<std::vector<double>>();
 	if (!value)
 		return -EINVAL;
 	gain = std::move(*value);
@@ -94,7 +92,7 @@ int AgcExposureMode::read(const libcamera::YamlObject &params)
 
 static std::tuple<int, std::string>
 readExposureModes(std::map<std::string, AgcExposureMode> &exposureModes,
-		  const libcamera::YamlObject &params)
+		  const libcamera::ValueNode &params)
 {
 	std::string first;
 	int ret;
@@ -113,7 +111,7 @@ readExposureModes(std::map<std::string, AgcExposureMode> &exposureModes,
 	return { 0, first };
 }
 
-int AgcConstraint::read(const libcamera::YamlObject &params)
+int AgcConstraint::read(const libcamera::ValueNode &params)
 {
 	std::string boundString = params["bound"].get<std::string>("");
 	transform(boundString.begin(), boundString.end(),
@@ -139,7 +137,7 @@ int AgcConstraint::read(const libcamera::YamlObject &params)
 }
 
 static std::tuple<int, AgcConstraintMode>
-readConstraintMode(const libcamera::YamlObject &params)
+readConstraintMode(const libcamera::ValueNode &params)
 {
 	AgcConstraintMode mode;
 	int ret;
@@ -158,7 +156,7 @@ readConstraintMode(const libcamera::YamlObject &params)
 
 static std::tuple<int, std::string>
 readConstraintModes(std::map<std::string, AgcConstraintMode> &constraintModes,
-		    const libcamera::YamlObject &params)
+		    const libcamera::ValueNode &params)
 {
 	std::string first;
 	int ret;
@@ -175,7 +173,7 @@ readConstraintModes(std::map<std::string, AgcConstraintMode> &constraintModes,
 	return { 0, first };
 }
 
-int AgcChannelConstraint::read(const libcamera::YamlObject &params)
+int AgcChannelConstraint::read(const libcamera::ValueNode &params)
 {
 	auto channelValue = params["channel"].get<unsigned int>();
 	if (!channelValue) {
@@ -204,7 +202,7 @@ int AgcChannelConstraint::read(const libcamera::YamlObject &params)
 }
 
 static int readChannelConstraints(std::vector<AgcChannelConstraint> &channelConstraints,
-				  const libcamera::YamlObject &params)
+				  const libcamera::ValueNode &params)
 {
 	for (const auto &p : params.asList()) {
 		AgcChannelConstraint constraint;
@@ -218,7 +216,7 @@ static int readChannelConstraints(std::vector<AgcChannelConstraint> &channelCons
 	return 0;
 }
 
-int AgcConfig::read(const libcamera::YamlObject &params)
+int AgcConfig::read(const libcamera::ValueNode &params)
 {
 	LOG(RPiAgc, Debug) << "AgcConfig";
 	int ret;
@@ -290,7 +288,7 @@ AgcChannel::AgcChannel()
 	status_.ev = ev_;
 }
 
-int AgcChannel::read(const libcamera::YamlObject &params,
+int AgcChannel::read(const libcamera::ValueNode &params,
 		     const Controller::HardwareConfig &hardwareConfig)
 {
 	int ret = config_.read(params);
@@ -298,7 +296,7 @@ int AgcChannel::read(const libcamera::YamlObject &params,
 		return ret;
 
 	const Size &size = hardwareConfig.agcZoneWeights;
-	for (auto const &modes : config_.meteringModes) {
+	for (const auto &modes : config_.meteringModes) {
 		if (modes.second.weights.size() != size.width * size.height) {
 			LOG(RPiAgc, Error) << "AgcMeteringMode: Incorrect number of weights";
 			return -EINVAL;
@@ -941,8 +939,8 @@ void AgcChannel::divideUpExposure()
 	/* Finally work out the digital gain that we will need. */
 	filtered_.totalExposureNoDG = analogueGain * exposureTime;
 	double digitalGain = filtered_.totalExposure / filtered_.totalExposureNoDG;
-	/* Limit dg by what is allowed. */
-	digitalGain = std::min(digitalGain, config_.maxDigitalGain);
+	/* Limit dg by what is allowed (and to 1.0 to avoid saturation issues). */
+	digitalGain = std::clamp(digitalGain, 1.0, config_.maxDigitalGain);
 	/* Update total exposure, in case the dg went down. */
 	filtered_.totalExposure = filtered_.totalExposureNoDG * digitalGain;
 

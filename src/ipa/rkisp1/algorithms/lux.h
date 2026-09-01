@@ -22,7 +22,10 @@ class Lux : public Algorithm
 public:
 	Lux();
 
-	int init(IPAContext &context, const YamlObject &tuningData) override;
+	int init(IPAContext &context, const ValueNode &tuningData) override;
+	void prepare(IPAContext &context, const uint32_t frame,
+		     IPAFrameContext &frameContext,
+		     RkISP1Params *params) override;
 	void process(IPAContext &context, const uint32_t frame,
 		     IPAFrameContext &frameContext,
 		     const rkisp1_stat_buffer *stats,

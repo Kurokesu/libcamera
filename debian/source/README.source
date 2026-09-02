@@ -41,7 +41,8 @@ Identity adaptations
 
 These define Kurokesu's fork:
 
-  * Version scheme: `1:0.7.1+rpt<date>+krks<N>-<M>`. The leading `1:` is
+  * Version scheme: `1:<upstream>+krks<N>-<M>`, for example
+    `1:0.7.2+rpt20260817+krks1-1`. The leading `1:` is
     a Debian epoch: it makes Kurokesu's libcamera outrank Raspberry Pi's
     stock build regardless of RPi's `+rpt<date>`, which would otherwise
     overtake our fixed-snapshot base between releases. The `+krks<N>`
@@ -89,6 +90,10 @@ Seed
 
   * Source: github.com/raspberrypi/libcamera, branch `pios/trixie`.
   * Last seed: 896780d3 (libcamera 0.7.1+rpt20260429-1).
+  * Public branch stalled at that seed. Later RPi releases exist only
+    as source packages on archive.raspberrypi.com, so cross-check
+    `debian/` against `.debian.tar.xz` of the matching version.
+    0.7.2+rpt20260817-1 matched the seed apart from changelog entries.
   * Reseed procedure (in order):
       1. Replace `debian/` wholesale with the new seed's contents.
       2. Run `quilt push -a` against the merged source to verify our

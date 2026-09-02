@@ -4,10 +4,10 @@
 
 On Raspberry Pi, `libcamera` and `rpicam-apps` must be rebuilt together. Detailed instructions are available [here](https://www.raspberrypi.com/documentation/computers/camera_software.html#advanced-rpicam-apps), but for convenience, here is a shorter version.
 
-Remove pre-installed `rpicam-apps`:
+Remove pre-installed `rpicam-apps` packages:
 
 ```bash
-sudo apt remove --purge rpicam-apps
+sudo apt remove --purge 'rpicam-apps*' librpicam-app1
 ```
 
 ## libcamera
@@ -63,6 +63,7 @@ Install dependencies:
 sudo apt install -y cmake libboost-program-options-dev libdrm-dev libexif-dev
 sudo apt install -y libavcodec-dev libavdevice-dev libavformat-dev libswresample-dev
 sudo apt install -y libepoxy-dev libpng-dev
+sudo apt install -y libwayland-dev wayland-protocols libwayland-bin
 ```
 
 Clone Kurokesu's `rpicam-apps` fork:
@@ -76,7 +77,7 @@ cd rpicam-apps
 Configure with `meson` (libav enabled by default):
 
 ```bash
-meson setup build -Denable_libav=enabled -Denable_drm=enabled -Denable_egl=enabled -Denable_qt=enabled -Denable_opencv=disabled -Denable_tflite=disabled -Denable_hailo=disabled
+meson setup build -Denable_libav=enabled -Denable_drm=enabled -Denable_egl=enabled -Denable_wayland=enabled -Denable_qt=enabled -Denable_opencv=disabled -Denable_tflite=disabled -Denable_hailo=disabled
 ```
 
 > [!IMPORTANT]
@@ -93,7 +94,7 @@ Bookworm ships `libavcodec` **59.x** while newer `rpicam-apps` expects **libavco
   ```
 - **Disable libav** if building `rpicam-apps` > v1.9.0 (keeps AR0822 eHDR support):
   ```bash
-  meson setup build -Denable_libav=disabled -Denable_drm=enabled -Denable_egl=enabled -Denable_qt=enabled -Denable_opencv=disabled -Denable_tflite=disabled -Denable_hailo=disabled
+  meson setup build -Denable_libav=disabled -Denable_drm=enabled -Denable_egl=enabled -Denable_wayland=enabled -Denable_qt=enabled -Denable_opencv=disabled -Denable_tflite=disabled -Denable_hailo=disabled
   ```
 
 </details>
@@ -104,18 +105,12 @@ Build:
 meson compile -C build
 ```
 
-Install:
+Install and refresh the linker cache:
 
 ```bash
 sudo meson install -C build
+sudo ldconfig
 ```
-
-> [!TIP]
-> This should automatically update `ldconfig` cache. If you have trouble accessing your new build, update manually:
->
-> ```bash
-> sudo ldconfig
-> ```
 
 Verify new binary is used:
 

@@ -118,11 +118,13 @@ CamHelperImx585::getBlanking(Duration &exposure, Duration minFrameDuration,
 
 	const long width = mode_.width;
 	const long height = mode_.height;
-	const long minHmax = std::lround(toTicks(mode_.minLineLength));
+	const long driverMinHmax = std::lround(width * kClock / mode_.pixelRate);
+	const long minHmax = std::max(driverMinHmax,
+				      std::lround(toTicks(mode_.minLineLength)));
 	const long capHmax = std::min<long>(std::lround(toTicks(mode_.maxLineLength)),
 					    minHmax + minHmax / 2);
 	long long target = std::llround(toTicks(minFrameDuration));
-	if (minHmax <= 0 || target <= 0)
+	if (driverMinHmax <= 0 || target <= 0)
 		return { vblank, hblank };
 
 	/*
@@ -188,10 +190,10 @@ CamHelperImx585::getBlanking(Duration &exposure, Duration minFrameDuration,
 
 	/*
 	 * Realise the integer HMAX through HBLANK: the driver programs
-	 * HMAX = floor(minHmax * (width + hblank) / width), so take the smallest
+	 * HMAX = floor(min_hmax * (width + hblank) / width), so take the smallest
 	 * line length (width + hblank) that floors to bestH.
 	 */
-	long lineLengthPck = (bestH * width + minHmax - 1) / minHmax;	/* ceil */
+	long lineLengthPck = (bestH * width + driverMinHmax - 1) / driverMinHmax; /* ceil */
 	int32_t newHblank = static_cast<int32_t>(std::max<long>(0, lineLengthPck - width));
 	uint32_t newVblank = static_cast<uint32_t>(std::max<long long>(0, bestV - height));
 

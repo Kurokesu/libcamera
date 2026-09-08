@@ -1,3 +1,12 @@
+libcamera (1:0.7.2+rpt20260817+krks3-1) trixie; urgency=medium
+
+  * pipeline: rpi: Clear immediate controls queue on stop. Stale entries
+    keyed by request sequence blocked every immediate control of the next
+    session, so ColourGains or StatsOutputEnable sent through a request
+    took as many frames to land as the previous session ran.
+
+ -- Danius Kalvaitis <danius@kurokesu.com>  Tue, 08 Sep 2026 14:36:19 +0300
+
 libcamera (1:0.7.2+rpt20260817+krks2-1) trixie; urgency=medium
 
   * IMX585: Fix pinned frame rate on 4K modes. Line length search

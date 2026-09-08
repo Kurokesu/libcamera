@@ -734,6 +734,7 @@ void PipelineHandlerBase::stopDevice(Camera *camera)
 	data->frontendDevice()->setFrameStartEnabled(false);
 
 	data->clearIncompleteRequests();
+	data->clearImmediateControls();
 
 	/* Stop the IPA. */
 	data->ipa_->stop();
@@ -1418,6 +1419,11 @@ void CameraData::clearIncompleteRequests()
 		pipe()->completeRequest(request);
 		requestQueue_.pop();
 	}
+}
+
+void CameraData::clearImmediateControls()
+{
+	immediateControls_ = {};
 }
 
 void CameraData::handleStreamBuffer(FrameBuffer *buffer, RPi::Stream *stream)

@@ -386,6 +386,20 @@ const CameraSensorProperties *CameraSensorProperties::get(const std::string &sen
 				.hblankDelay = 3
 			},
 		} },
+		{ "os08e10", {
+			.unitCellSize = { 1998, 1998 },
+			.testPatternModes = {
+				{ controls::draft::TestPatternModeOff, 0 },
+				{ controls::draft::TestPatternModeColorBars, 1 },
+				{ controls::draft::TestPatternModeCustom1, 2 },
+			},
+			.sensorDelays = {
+				.exposureDelay = 2,
+				.gainDelay = 2,
+				.vblankDelay = 1,
+				.hblankDelay = 1
+			},
+		} },
 		{ "ov08d10", {
 			.unitCellSize = { 1120, 1120 },
 			.testPatternModes =  {

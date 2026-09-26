@@ -1,3 +1,11 @@
+libcamera (1:0.7.2+rpt20260817+krks4-1) trixie; urgency=medium
+
+  * OS08E10: Add sensor support. Camera helper, sensor properties and
+    tuning for Pi 4 and Pi 5, calibrated from 3025 K to 6550 K without
+    lens shading tables.
+
+ -- Danius Kalvaitis <danius@kurokesu.com>  Sat, 26 Sep 2026 17:29:15 +0300
+
 libcamera (1:0.7.2+rpt20260817+krks3-1) trixie; urgency=medium
 
   * pipeline: rpi: Clear immediate controls queue on stop. Stale entries

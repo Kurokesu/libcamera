@@ -10,7 +10,7 @@ on:
     branches: [debian/latest]
   workflow_dispatch:
 
-# Only the newest ref state is worth a full ~30 min matrix build.
+# Only the newest ref state is worth a full matrix build
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

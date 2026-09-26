@@ -702,6 +702,17 @@ public:
 };
 REGISTER_CAMERA_SENSOR_HELPER("imx708", CameraSensorHelperImx708)
 
+class CameraSensorHelperOs08e10 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperOs08e10()
+	{
+		blackLevel_ = 4096;
+		gain_ = AnalogueGainLinear{ 1, 0, 0, 16 };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("os08e10", CameraSensorHelperOs08e10)
+
 class CameraSensorHelperOv01a10 : public CameraSensorHelper
 {
 public:

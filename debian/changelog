@@ -1,3 +1,13 @@
+libcamera (1:0.7.2+rpt20260817+krks6-1) trixie; urgency=medium
+
+  * IMX900: Calibrate mono tuning for Pi 4 and Pi 5. Lux, noise, GEQ,
+    denoise and sharpen from CTT. Lens shading not calibrated yet.
+  * IMX477: Calibrate tuning for Pi 4 and Pi 5 from 3025 K to 6550 K.
+    Black level, lux, noise, GEQ, AWB and CCM from CTT, stock lens
+    shading kept. Fixes magenta cast on Kurokesu IMX477 modules.
+
+ -- Danius Kalvaitis <danius@kurokesu.com>  Fri, 30 Oct 2026 18:01:14 +0200
+
 libcamera (1:0.7.2+rpt20260817+krks5-1) trixie; urgency=medium
 
   * IMX900: Add sensor support. Camera helper, sensor properties and

@@ -53,12 +53,11 @@ int Lsc::init(IPAContext &context, const ValueNode &tuningData)
 {
 	gridPos_ = segmentsToPosition();
 
-	return lscAlgo_.init(tuningData, context.ctrlMap, {
-				.keys = { "r", "g", "b" },
-				.numHSamples = kMeshSize,
-				.numVSamples = kMeshSize,
-				.sensorSize = context.sensorInfo.activeAreaSize
-			     });
+	return lscAlgo_.init(tuningData, context.ctrlMap,
+			     { .keys = { "r", "g", "b" },
+			       .numHSamples = kMeshSize,
+			       .numVSamples = kMeshSize,
+			       .sensorSize = context.sensorInfo.activeArea.size() });
 }
 
 int Lsc::configure(IPAContext &context, const IPACameraSensorInfo &configInfo)
@@ -92,7 +91,7 @@ int Lsc::configure(IPAContext &context, const IPACameraSensorInfo &configInfo)
 		/* Only 32x32 tables of coefficients are accepted. */
 		ASSERT(rTable.size() == kGridSize &&
 		       gTable.size() == kGridSize &&
-		       bTable.size() != kGridSize);
+		       bTable.size() == kGridSize);
 
 		if (colourTemperatures_.size() >= kMaxColourTemperatures) {
 			LOG(MaliC55Lsc, Error)

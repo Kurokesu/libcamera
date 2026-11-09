@@ -470,8 +470,8 @@ int DebayerCpu::getInputConfig(PixelFormat inputFormat, DebayerInputConfig &conf
 		return 0;
 	}
 
-	LOG(Debayer, Info)
-		<< "Unsupported input format " << inputFormat.toString();
+	LOG(Debayer, Debug)
+		<< "Unsupported input format " << inputFormat;
 	return -EINVAL;
 }
 
@@ -624,10 +624,14 @@ int DebayerCpu::setDebayerFunctions(PixelFormat inputFormat,
 
 int DebayerCpu::configure(const StreamConfiguration &inputCfg,
 			  const std::vector<std::reference_wrapper<const StreamConfiguration>> &outputCfgs,
-			  bool ccmEnabled)
+			  bool ccmEnabled,
+			  [[maybe_unused]] bool lscEnabled)
 {
-	if (getInputConfig(inputCfg.pixelFormat, inputConfig_) != 0)
+	if (getInputConfig(inputCfg.pixelFormat, inputConfig_) != 0) {
+		LOG(Debayer, Error)
+			<< "Unsupported input format " << inputCfg.pixelFormat;
 		return -EINVAL;
+	}
 
 	if (stats_->configure(inputCfg, threads_.size()) != 0)
 		return -EINVAL;

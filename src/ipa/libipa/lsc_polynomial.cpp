@@ -196,7 +196,7 @@ int LscPolynomial::parseLscData(const ValueNode &sets,
  */
 LscImplementation::ComponentsMap
 LscPolynomial::sampleForCrop(const Rectangle &cropRectangle,
-			     std::vector<double> xPos, std::vector<double> yPos)
+			     std::span<const double> xPos, std::span<const double> yPos)
 {
 
 	LscImplementation::ComponentsMap components;
@@ -214,8 +214,8 @@ LscPolynomial::sampleForCrop(const Rectangle &cropRectangle,
 
 std::vector<float>
 LscPolynomial::samplePolynomial(const lsc::Polynomial &poly,
-				Span<const double> xPositions,
-				Span<const double> yPositions,
+				std::span<const double> xPositions,
+				std::span<const double> yPositions,
 				const Rectangle &cropRectangle)
 {
 	double m = poly.getM();

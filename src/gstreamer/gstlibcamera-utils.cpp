@@ -46,6 +46,9 @@ static const struct {
 
 	/* Monochrome */
 	{ GST_VIDEO_FORMAT_GRAY8, formats::R8 },
+#if GST_CHECK_VERSION(1, 26, 0)
+	{ GST_VIDEO_FORMAT_GRAY10_LE16, formats::R10 },
+#endif
 	{ GST_VIDEO_FORMAT_GRAY16_LE, formats::R16 },
 
 	/* RGB16 */
@@ -749,7 +752,7 @@ int gst_libcamera_set_structure_field(GstStructure *structure, const ControlId *
 	switch (value.type()) {
 	case ControlTypeBool:
 		if (is_array) {
-			for (const auto &item : value.get<Span<const bool>>()) {
+			for (const auto &item : value.get<std::span<const bool>>()) {
 				g_value_init(&x, type);
 				g_value_set_boolean(&x, item);
 				gst_value_array_append_and_take_value(&v, &x);
@@ -761,7 +764,7 @@ int gst_libcamera_set_structure_field(GstStructure *structure, const ControlId *
 		break;
 	case ControlTypeByte:
 		if (is_array) {
-			for (const auto &item : value.get<Span<const uint8_t>>()) {
+			for (const auto &item : value.get<std::span<const uint8_t>>()) {
 				g_value_init(&x, type);
 				g_value_set_uint(&x, item);
 				gst_value_array_append_and_take_value(&v, &x);
@@ -773,7 +776,7 @@ int gst_libcamera_set_structure_field(GstStructure *structure, const ControlId *
 		break;
 	case ControlTypeUnsigned16:
 		if (is_array) {
-			for (const auto &item : value.get<Span<const uint16_t>>()) {
+			for (const auto &item : value.get<std::span<const uint16_t>>()) {
 				g_value_init(&x, type);
 				g_value_set_uint(&x, item);
 				gst_value_array_append_and_take_value(&v, &x);
@@ -785,7 +788,7 @@ int gst_libcamera_set_structure_field(GstStructure *structure, const ControlId *
 		break;
 	case ControlTypeUnsigned32:
 		if (is_array) {
-			for (const auto &item : value.get<Span<const uint32_t>>()) {
+			for (const auto &item : value.get<std::span<const uint32_t>>()) {
 				g_value_init(&x, type);
 				g_value_set_uint(&x, item);
 				gst_value_array_append_and_take_value(&v, &x);
@@ -797,7 +800,7 @@ int gst_libcamera_set_structure_field(GstStructure *structure, const ControlId *
 		break;
 	case ControlTypeInteger32:
 		if (is_array) {
-			for (const auto &item : value.get<Span<const int32_t>>()) {
+			for (const auto &item : value.get<std::span<const int32_t>>()) {
 				g_value_init(&x, type);
 				g_value_set_int(&x, item);
 				gst_value_array_append_and_take_value(&v, &x);
@@ -822,7 +825,7 @@ int gst_libcamera_set_structure_field(GstStructure *structure, const ControlId *
 		break;
 	case ControlTypeInteger64:
 		if (is_array) {
-			for (const auto &item : value.get<Span<const int64_t>>()) {
+			for (const auto &item : value.get<std::span<const int64_t>>()) {
 				g_value_init(&x, type);
 				g_value_set_int64(&x, item);
 				gst_value_array_append_and_take_value(&v, &x);
@@ -834,7 +837,7 @@ int gst_libcamera_set_structure_field(GstStructure *structure, const ControlId *
 		break;
 	case ControlTypeFloat:
 		if (is_array) {
-			for (const auto &item : value.get<Span<const float>>()) {
+			for (const auto &item : value.get<std::span<const float>>()) {
 				g_value_init(&x, type);
 				g_value_set_float(&x, item);
 				gst_value_array_append_and_take_value(&v, &x);
@@ -855,7 +858,7 @@ int gst_libcamera_set_structure_field(GstStructure *structure, const ControlId *
 		break;
 	case ControlTypeSize:
 		if (is_array) {
-			for (const auto &item : value.get<Span<const Size>>())
+			for (const auto &item : value.get<std::span<const Size>>())
 				gst_libcamera_gvalue_set_size(&v, item);
 		} else {
 			gst_libcamera_gvalue_set_size(&v, value.get<const Size>());
@@ -863,7 +866,7 @@ int gst_libcamera_set_structure_field(GstStructure *structure, const ControlId *
 		break;
 	case ControlTypePoint:
 		if (is_array) {
-			for (const auto &item : value.get<Span<const Point>>())
+			for (const auto &item : value.get<std::span<const Point>>())
 				gst_libcamera_gvalue_set_point(&v, item);
 		} else {
 			gst_libcamera_gvalue_set_point(&v, value.get<const Point>());
@@ -871,7 +874,7 @@ int gst_libcamera_set_structure_field(GstStructure *structure, const ControlId *
 		break;
 	case ControlTypeRectangle:
 		if (is_array) {
-			for (const auto &item : value.get<Span<const Rectangle>>())
+			for (const auto &item : value.get<std::span<const Rectangle>>())
 				gst_libcamera_gvalue_set_rectangle(&v, item);
 		} else {
 			gst_libcamera_gvalue_set_rectangle(&v, value.get<const Rectangle>());

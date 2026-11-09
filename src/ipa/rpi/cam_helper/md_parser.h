@@ -9,9 +9,8 @@
 #include <initializer_list>
 #include <map>
 #include <optional>
+#include <span>
 #include <stdint.h>
-
-#include <libcamera/base/span.h>
 
 /*
  * Camera metadata parser class. Usage as shown below.
@@ -101,7 +100,7 @@ public:
 		lineLengthBytes_ = numBytes;
 	}
 
-	virtual Status parse(libcamera::Span<const uint8_t> buffer,
+	virtual Status parse(std::span<const uint8_t> buffer,
 			     RegisterMap &registers) = 0;
 
 protected:
@@ -123,7 +122,7 @@ class MdParserSmia final : public MdParser
 public:
 	MdParserSmia(std::initializer_list<uint32_t> registerList);
 
-	MdParser::Status parse(libcamera::Span<const uint8_t> buffer,
+	MdParser::Status parse(std::span<const uint8_t> buffer,
 			       RegisterMap &registers) override;
 
 private:
@@ -147,7 +146,7 @@ private:
 		BadPadding   = -5
 	};
 
-	ParseStatus findRegs(libcamera::Span<const uint8_t> buffer);
+	ParseStatus findRegs(std::span<const uint8_t> buffer);
 
 	OffsetMap offsets_;
 };
@@ -157,7 +156,7 @@ class MdParserOnsemi final : public MdParser
 public:
 	MdParserOnsemi(std::initializer_list<uint16_t> registerList);
 
-	MdParser::Status parse(libcamera::Span<const uint8_t> buffer,
+	MdParser::Status parse(std::span<const uint8_t> buffer,
 			       RegisterMap &registers) override;
 
 private:
@@ -165,12 +164,12 @@ private:
 	OffsetMap offsets_;
 	uint8_t paddingInterval_ = 0;
 
-	MdParser::Status findRegs(libcamera::Span<const uint8_t> buffer);
+	MdParser::Status findRegs(std::span<const uint8_t> buffer);
 
-	MdParser::Status getValue(libcamera::Span<const uint8_t> buffer,
+	MdParser::Status getValue(std::span<const uint8_t> buffer,
 				  uint16_t index, uint16_t *value, uint8_t tag0, uint8_t tag1);
 
-	uint8_t dataWithoutPadding(libcamera::Span<const uint8_t> buffer,
+	uint8_t dataWithoutPadding(std::span<const uint8_t> buffer,
 				   uint16_t offset);
 };
 

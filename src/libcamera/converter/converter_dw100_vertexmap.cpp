@@ -10,12 +10,12 @@
 #include <algorithm>
 #include <assert.h>
 #include <cmath>
+#include <span>
 #include <stdint.h>
 #include <utility>
 #include <vector>
 
 #include <libcamera/base/log.h>
-#include <libcamera/base/span.h>
 
 #include <libcamera/geometry.h>
 #include <libcamera/transform.h>
@@ -255,7 +255,7 @@ int dw100VerticesForLength(const int length)
  *
  * \return 0 on success or -EINVAL if \a coeffs has the wrong size
  */
-int Dw100VertexMap::DewarpParams::setCoefficients(Span<const double> coeffs)
+int Dw100VertexMap::DewarpParams::setCoefficients(std::span<const double> coeffs)
 {
 	size_t s = coeffs.size();
 	if (!(s == 4 || s == 5 || s == 8 || s == 12))
@@ -578,7 +578,27 @@ std::vector<uint32_t> Dw100VertexMap::getVertexMap()
 		<< " scaleX: " << effectiveScaleX_
 		<< " scaleY: " << effectiveScaleX_
 		<< " rotation: " << rotation_
-		<< " offset: " << effectiveOffset_;
+		<< " offset: " << effectiveOffset_
+		<< " lensDewarpEnable: " << lensDewarpEnable_;
+
+	if (dewarpParams_.has_value())
+		LOG(Converter, Debug)
+			<< "Lens dewarp parameters cm: " << dewarpParams_->cm
+			<< " coeffs: [" << dewarpParams_->coefficients.k1
+			<< ", " << dewarpParams_->coefficients.k2
+			<< ", " << dewarpParams_->coefficients.p1
+			<< ", " << dewarpParams_->coefficients.p2
+			<< ", " << dewarpParams_->coefficients.k3
+			<< ", " << dewarpParams_->coefficients.k4
+			<< ", " << dewarpParams_->coefficients.k5
+			<< ", " << dewarpParams_->coefficients.k6
+			<< ", " << dewarpParams_->coefficients.s1
+			<< ", " << dewarpParams_->coefficients.s2
+			<< ", " << dewarpParams_->coefficients.s3
+			<< ", " << dewarpParams_->coefficients.s4
+			<< "]";
+	else
+		LOG(Converter, Debug) << "Lens dewarp parameters: None";
 
 	Matrix3x3 outputToSensor = Matrix3x3::identity();
 	/* Move to center of output */

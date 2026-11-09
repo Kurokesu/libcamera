@@ -8,11 +8,10 @@
 #pragma once
 
 #include <map>
+#include <span>
 #include <stdint.h>
 #include <string>
 #include <vector>
-
-#include <libcamera/base/span.h>
 
 #include <libcamera/geometry.h>
 
@@ -44,7 +43,7 @@ public:
 
 	virtual ComponentsMap
 	sampleForCrop(const Rectangle &cropRectangle,
-		      std::vector<double> xPos, std::vector<double> yPos) = 0;
+		      std::span<const double> xPos, std::span<const double> yPos) = 0;
 };
 
 } /* namespace ipa */

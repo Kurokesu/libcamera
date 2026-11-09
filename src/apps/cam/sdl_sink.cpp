@@ -116,6 +116,8 @@ int SDLSink::configure(const libcamera::CameraConfiguration &config)
 	else if (cfg.pixelFormat == libcamera::formats::NV21)
 		texture_ = std::make_unique<SDLTextureNV>(rect_, SDL_PIXELFORMAT_NV21, cfg.stride);
 #endif
+	else if (cfg.pixelFormat == libcamera::formats::YUV420)
+		texture_ = std::make_unique<SDLTextureYUV>(rect_, SDL_PIXELFORMAT_IYUV, cfg.stride);
 	else {
 		std::cerr << "Unsupported pixel format " << cfg.pixelFormat << std::endl;
 		return -EINVAL;
@@ -230,13 +232,13 @@ void SDLSink::renderBuffer(FrameBuffer *buffer)
 {
 	Image *image = mappedBuffers_[buffer].get();
 
-	std::vector<Span<const uint8_t>> planes;
+	std::vector<std::span<const uint8_t>> planes;
 	unsigned int i = 0;
 
 	planes.reserve(buffer->metadata().planes().size());
 
 	for (const FrameMetadata::Plane &meta : buffer->metadata().planes()) {
-		Span<uint8_t> data = image->data(i);
+		std::span<uint8_t> data = image->data(i);
 		if (meta.bytesused > data.size())
 			std::cerr << "payload size " << meta.bytesused
 				  << " larger than plane size " << data.size()

@@ -32,7 +32,7 @@ MdParserOnsemi::MdParserOnsemi(std::initializer_list<uint16_t> registerList)
 		offsets_[regAddress] = {};
 }
 
-MdParser::Status MdParserOnsemi::parse(libcamera::Span<const uint8_t> buffer,
+MdParser::Status MdParserOnsemi::parse(std::span<const uint8_t> buffer,
 				       RegisterMap &registers)
 {
 	MdParser::Status ret;
@@ -71,7 +71,7 @@ MdParser::Status MdParserOnsemi::parse(libcamera::Span<const uint8_t> buffer,
 	return OK;
 }
 
-MdParser::Status MdParserOnsemi::findRegs(libcamera::Span<const uint8_t> buffer)
+MdParser::Status MdParserOnsemi::findRegs(std::span<const uint8_t> buffer)
 {
 	MdParser::Status ret;
 	bool waitForLineStart = true, parse = true;
@@ -150,7 +150,7 @@ MdParser::Status MdParserOnsemi::findRegs(libcamera::Span<const uint8_t> buffer)
 	return OK;
 }
 
-MdParser::Status MdParserOnsemi::getValue(libcamera::Span<const uint8_t> buffer,
+MdParser::Status MdParserOnsemi::getValue(std::span<const uint8_t> buffer,
 					  uint16_t index, uint16_t *value, uint8_t tag0, uint8_t tag1)
 {
 	if ((dataWithoutPadding(buffer, index) != tag0) ||
@@ -166,7 +166,7 @@ MdParser::Status MdParserOnsemi::getValue(libcamera::Span<const uint8_t> buffer,
 	return OK;
 }
 
-uint8_t MdParserOnsemi::dataWithoutPadding(libcamera::Span<const uint8_t> buffer,
+uint8_t MdParserOnsemi::dataWithoutPadding(std::span<const uint8_t> buffer,
 					   uint16_t offset)
 {
 	if (paddingInterval_ > 0)

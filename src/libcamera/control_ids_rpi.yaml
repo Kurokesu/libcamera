@@ -24,7 +24,7 @@ controls:
       size: [n]
       direction: out
       description: |
-        Span of the BCM2835 ISP generated statistics for the current frame.
+        The BCM2835 ISP generated statistics for the current frame.
 
         This is sent in the Request metadata if the StatsOutputEnable is set to
         true.  The statistics struct definition can be found in
@@ -64,7 +64,7 @@ controls:
       direction: out
       size: [n]
       description: |
-        Span of the PiSP Frontend ISP generated statistics for the current
+        The PiSP Frontend ISP generated statistics for the current
         frame. This is sent in the Request metadata if the StatsOutputEnable is
         set to true. The statistics struct definition can be found in
         https://github.com/raspberrypi/libpisp/blob/main/src/libpisp/frontend/pisp_statistics.h
@@ -94,16 +94,16 @@ controls:
         \sa SyncFrames
 
       enum:
-        - name: SyncModeOff
+        - name: "Off"
           value: 0
           description: Disable sync mode.
-        - name: SyncModeServer
+        - name: Server
           value: 1
           description: |
             Enable sync mode, act as server. The server broadcasts timing
             messages to any clients that are listening, so that the clients can
             synchronise their camera frames with the server's.
-        - name: SyncModeClient
+        - name: Client
           value: 2
           description: |
             Enable sync mode, act as client. A client listens for any server
@@ -172,12 +172,12 @@ controls:
       direction: in
       description: |
         The number of frames the server should wait, after enabling
-        SyncModeServer, before signalling (via the SyncReady control) that
+        SyncMode.Server, before signalling (via the SyncReady control) that
         frames should be used. This therefore determines the "ready time" for
         all synchronised cameras.
 
         This control value should be set only for the device that is to act as
-        the server, before or at the same moment at which SyncModeServer is
+        the server, before or at the same moment at which SyncMode.Server is
         enabled.
 
         \sa SyncMode

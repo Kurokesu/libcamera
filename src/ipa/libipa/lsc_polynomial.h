@@ -8,9 +8,8 @@
 
 #include <array>
 #include <map>
+#include <span>
 #include <vector>
-
-#include <libcamera/base/span.h>
 
 #include <libcamera/geometry.h>
 
@@ -62,12 +61,12 @@ public:
 
 	LscImplementation::ComponentsMap
 	sampleForCrop(const Rectangle &cropRectangle,
-		      std::vector<double> xPos, std::vector<double> yPos) override;
+		      std::span<const double> xPos, std::span<const double> yPos) override;
 
 private:
 	std::vector<float> samplePolynomial(const lsc::Polynomial &poly,
-					    Span<const double> xPositions,
-					    Span<const double> yPositions,
+					    std::span<const double> xPositions,
+					    std::span<const double> yPositions,
 					    const Rectangle &cropRectangle);
 	PolynomialComponentsMap lscData_;
 };

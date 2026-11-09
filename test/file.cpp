@@ -5,6 +5,7 @@
  * File I/O operations tests
  */
 
+#include <array>
 #include <fstream>
 #include <iostream>
 #include <stdlib.h>
@@ -280,7 +281,7 @@ protected:
 		file.setFileName(self());
 		file.open(File::OpenModeFlag::ReadOnly);
 
-		Span<uint8_t> data = file.map();
+		std::span<uint8_t> data = file.map();
 		if (data.empty()) {
 			cerr << "Mapping of complete file failed" << endl;
 			return TestFail;

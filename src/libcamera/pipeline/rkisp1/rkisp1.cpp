@@ -128,6 +128,7 @@ public:
 
 	bool canUseDewarper_;
 	bool usesDewarper_;
+	std::optional<Dw100VertexMap::DewarpParams> dewarpParams_;
 
 private:
 	void paramsComputed(unsigned int frame, unsigned int bytesused);
@@ -187,7 +188,7 @@ public:
 	PipelineHandlerRkISP1(CameraManager *manager);
 
 	std::unique_ptr<CameraConfiguration> generateConfiguration(Camera *camera,
-								   Span<const StreamRole> roles) override;
+								   std::span<const StreamRole> roles) override;
 	int configure(Camera *camera, CameraConfiguration *config) override;
 
 	int exportFrameBuffers(Camera *camera, Stream *stream,
@@ -462,7 +463,7 @@ int RkISP1CameraData::loadTuningFile(const std::string &path)
 		if (!params)
 			continue;
 
-		ret = pipe()->dewarper_->init(params);
+		ret = pipe()->dewarper_->loadDewarpParams(params, dewarpParams_);
 		if (ret)
 			return ret;
 
@@ -788,7 +789,7 @@ PipelineHandlerRkISP1::PipelineHandlerRkISP1(CameraManager *manager)
 
 std::unique_ptr<CameraConfiguration>
 PipelineHandlerRkISP1::generateConfiguration(Camera *camera,
-					     Span<const StreamRole> roles)
+					     std::span<const StreamRole> roles)
 {
 	RkISP1CameraData *data = cameraData(camera);
 
@@ -1058,7 +1059,7 @@ int PipelineHandlerRkISP1::configure(Camera *camera, CameraConfiguration *c)
 					PixelFormatInfo::info(ispCfg.pixelFormat)
 						.stride(ispCfg.size.width, 0);
 
-				ret = dewarper_->configure(ispCfg, { cfg });
+				ret = dewarper_->configure(ispCfg, { cfg }, data->dewarpParams_);
 				if (ret)
 					return ret;
 
@@ -1176,7 +1177,7 @@ int PipelineHandlerRkISP1::allocateBuffers(Camera *camera)
 	auto pushBuffers = [&](const std::vector<std::unique_ptr<FrameBuffer>> &buffers,
 			       std::queue<FrameBuffer *> &queue) {
 		for (const std::unique_ptr<FrameBuffer> &buffer : buffers) {
-			Span<const FrameBuffer::Plane> planes = buffer->planes();
+			std::span<const FrameBuffer::Plane> planes = buffer->planes();
 
 			buffer->setCookie(ipaBufferId++);
 			data->ipaBuffers_.emplace_back(buffer->cookie(),

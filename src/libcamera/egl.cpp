@@ -58,11 +58,6 @@ LOG_DEFINE_CATEGORY(eGL)
  */
 
 /**
- *\var eGL::surface_
- *\brief EGL sufrace handle
- */
-
-/**
  * \brief Construct an EGL helper
  * \param[in] display The EGL display to use
  *
@@ -78,15 +73,13 @@ eGL::eGL(EGLDisplay display)
 /**
  * \brief Destroy the EGL helper
  *
- * Destroys the EGL context and surface if they were successfully created.
+ * An instance must only be destroyed if there is no active EGL context.
+ *
+ * \sa resetEGLContext()
  */
 eGL::~eGL()
 {
-	if (context_ != EGL_NO_CONTEXT)
-		eglDestroyContext(display_, context_);
-
-	if (surface_ != EGL_NO_SURFACE)
-		eglDestroySurface(display_, surface_);
+	ASSERT(context_ == EGL_NO_CONTEXT);
 }
 
 /**
@@ -97,7 +90,7 @@ eGL::~eGL()
  */
 void eGL::syncOutput()
 {
-	ASSERT(tid_ == Thread::currentId());
+	assertThread();
 
 	glFinish();
 }
@@ -110,10 +103,18 @@ void eGL::syncOutput()
  */
 void eGL::flushOutput()
 {
-	ASSERT(tid_ == Thread::currentId());
+	assertThread();
 
 	glFlush();
 }
+
+/**
+ * \fn eGL::assertThread()
+ * \brief Assert that the execution is in the right thread
+ *
+ * Asserts that the execution is in the thread for which the created EGL
+ * context has been made current.
+ */
 
 /**
  * \brief Attach a texture to a frame-buffer-object
@@ -175,7 +176,7 @@ int eGL::createDMABufTexture2D(eGLImage &eglImage, int fd, bool output)
 	EGLint drm_format;
 	int ret = 0;
 
-	ASSERT(tid_ == Thread::currentId());
+	assertThread();
 
 	switch (eglImage.format_) {
 	case GL_RED:
@@ -183,7 +184,7 @@ int eGL::createDMABufTexture2D(eGLImage &eglImage, int fd, bool output)
 		drm_format = DRM_FORMAT_R8;
 		break;
 	case GL_RG:
-		drm_format = DRM_FORMAT_RG88;
+		drm_format = DRM_FORMAT_GR88;
 		break;
 	case GL_RGBA:
 		drm_format = DRM_FORMAT_ARGB8888;
@@ -207,9 +208,9 @@ int eGL::createDMABufTexture2D(eGLImage &eglImage, int fd, bool output)
 	};
 	// clang-format on
 
-	EGLImageKHR image = eglCreateImageKHR(display_, EGL_NO_CONTEXT,
-					      EGL_LINUX_DMA_BUF_EXT,
-					      NULL, image_attrs);
+	EGLImageKHR image = vtable_.eglCreateImageKHR(display_, EGL_NO_CONTEXT,
+						      EGL_LINUX_DMA_BUF_EXT,
+						      NULL, image_attrs);
 
 	if (image == EGL_NO_IMAGE_KHR) {
 		LOG(eGL, Debug) << "eglCreateImageKHR fail";
@@ -220,8 +221,8 @@ int eGL::createDMABufTexture2D(eGLImage &eglImage, int fd, bool output)
 	activateBindTexture(eglImage);
 
 	// Generate texture with filter semantics
-	glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, image);
-	eglDestroyImageKHR(display_, image);
+	vtable_.glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, image);
+	vtable_.eglDestroyImageKHR(display_, image);
 
 	// Nearest filtering
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -250,7 +251,7 @@ int eGL::createDMABufTexture2D(eGLImage &eglImage, int fd, bool output)
  */
 int eGL::createInputDMABufTexture2D(eGLImage &eglImage, int fd)
 {
-	ASSERT(tid_ == Thread::currentId());
+	assertThread();
 
 	return createDMABufTexture2D(eglImage, fd, false);
 }
@@ -269,7 +270,7 @@ int eGL::createInputDMABufTexture2D(eGLImage &eglImage, int fd)
  */
 int eGL::createOutputDMABufTexture2D(eGLImage &eglImage, int fd)
 {
-	ASSERT(tid_ == Thread::currentId());
+	assertThread();
 
 	return createDMABufTexture2D(eglImage, fd, true);
 }
@@ -278,15 +279,16 @@ int eGL::createOutputDMABufTexture2D(eGLImage &eglImage, int fd)
  * \brief Create a 2D texture from a memory buffer
  * \param[in,out] eglImage EGL image to associate with the texture
  * \param[in] data Pointer to pixel data, or nullptr for uninitialised texture
+ * \param[in] filter GL texture filter setting
  *
  * Creates a 2D texture from a CPU-accessible memory buffer. The texture
- * is configured with nearest filtering and clamp-to-edge wrapping. This
+ * is configured the specified filtering and clamp-to-edge wrapping. This
  * is useful for uploading static data like lookup tables or uniform color
  * matrices to the GPU.
  */
-void eGL::createTexture2D(eGLImage &eglImage, void *data)
+void eGL::createTexture2D(eGLImage &eglImage, const void *data, GLint filter)
 {
-	ASSERT(tid_ == Thread::currentId());
+	assertThread();
 
 	activateBindTexture(eglImage);
 
@@ -294,8 +296,8 @@ void eGL::createTexture2D(eGLImage &eglImage, void *data)
 	glTexImage2D(GL_TEXTURE_2D, 0, eglImage.format_, eglImage.width_, eglImage.height_, 0, eglImage.format_, GL_UNSIGNED_BYTE, data);
 
 	// Nearest filtering
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
 
 	// Wrap to edge to avoid edge artifacts
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -337,9 +339,9 @@ EGLDisplay eGL::probeDisplay()
  *
  * Updates a 2D texture in VRAM.
  */
-void eGL::updateTexture2D(eGLImage &eglImage, void *data)
+void eGL::updateTexture2D(eGLImage &eglImage, const void *data)
 {
-	ASSERT(tid_ == Thread::currentId());
+	assertThread();
 
 	activateBindTexture(eglImage);
 
@@ -356,7 +358,7 @@ void eGL::updateTexture2D(eGLImage &eglImage, void *data)
  */
 void eGL::createOutputTexture2D(eGLImage &eglImage)
 {
-	createTexture2D(eglImage, NULL);
+	createTexture2D(eglImage, NULL, GL_NEAREST);
 	attachTextureToFBO(eglImage);
 }
 
@@ -368,7 +370,12 @@ void eGL::createOutputTexture2D(eGLImage &eglImage)
  * - eglCreateImageKHR / eglDestroyImageKHR
  * - glEGLImageTargetTexture2DOES
  *
- * \return 0 on success, or -ENODEV on failure
+ * Each successful invocation must be followed by a call to resetEGLContext().
+ *
+ * If a valid EGL context is already present, initialization attempts
+ * will be rejected.
+ *
+ * \return 0 on success, or negative error code on failure
  */
 int eGL::initEGLContext()
 {
@@ -387,8 +394,12 @@ int eGL::initEGLContext()
 		EGL_NONE
 	};
 
+	VTable vtable = {};
 	EGLint numConfigs;
 	EGLConfig config;
+
+	if (context_ != EGL_NO_CONTEXT)
+		return -EEXIST;
 
 	if (!eglBindAPI(EGL_OPENGL_ES_API)) {
 		LOG(eGL, Error) << "API bind fail";
@@ -400,27 +411,21 @@ int eGL::initEGLContext()
 	LOG(eGL, Info) << "EGL: EGL_CLIENT_APIS: " << eglQueryString(display_, EGL_CLIENT_APIS);
 	LOG(eGL, Info) << "EGL: EGL_EXTENSIONS: " << eglQueryString(display_, EGL_EXTENSIONS);
 
-	eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC)eglGetProcAddress("eglCreateImageKHR");
-	if (!eglCreateImageKHR) {
+	vtable.eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC)eglGetProcAddress("eglCreateImageKHR");
+	if (!vtable.eglCreateImageKHR) {
 		LOG(eGL, Error) << "eglCreateImageKHR not found";
 		goto fail;
 	}
 
-	eglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC)eglGetProcAddress("eglDestroyImageKHR");
-	if (!eglDestroyImageKHR) {
+	vtable.eglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC)eglGetProcAddress("eglDestroyImageKHR");
+	if (!vtable.eglDestroyImageKHR) {
 		LOG(eGL, Error) << "eglDestroyImageKHR not found";
 		goto fail;
 	}
 
-	glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)eglGetProcAddress("glEGLImageTargetTexture2DOES");
-	if (!glEGLImageTargetTexture2DOES) {
+	vtable.glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)eglGetProcAddress("glEGLImageTargetTexture2DOES");
+	if (!vtable.glEGLImageTargetTexture2DOES) {
 		LOG(eGL, Error) << "glEGLImageTargetTexture2DOES not found";
-		goto fail;
-	}
-
-	glGetString = (PFNGLGETSTRINGPROC)eglGetProcAddress("glGetString");
-	if (!glGetString) {
-		LOG(eGL, Error) << "glGetString not found";
 		goto fail;
 	}
 
@@ -436,6 +441,7 @@ int eGL::initEGLContext()
 	}
 
 	tid_ = Thread::currentId();
+	vtable_ = vtable;
 
 	makeCurrent();
 
@@ -449,6 +455,24 @@ fail:
 }
 
 /**
+ * \brief Destroy the EGL context
+ *
+ * This function destroys the EGL context created by initEGLContext().
+ * If there is no valid EGL context, this function has no effect.
+ */
+void eGL::resetEGLContext()
+{
+	if (context_ != EGL_NO_CONTEXT) {
+		assertThread();
+		eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+		eglDestroyContext(display_, std::exchange(context_, EGL_NO_CONTEXT));
+	}
+
+	tid_ = -1;
+	vtable_ = {};
+}
+
+/**
  * \brief Make the EGL context current for the calling thread
  *
  * Binds the EGL context to the current thread, allowing OpenGL ES
@@ -457,39 +481,11 @@ fail:
  */
 void eGL::makeCurrent()
 {
-	ASSERT(tid_ == Thread::currentId());
+	assertThread();
 
 	if (eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, context_) != EGL_TRUE) {
 		LOG(eGL, Error) << "eglMakeCurrent fail";
 	}
-}
-
-/**
- * \brief Activate a shader program for rendering
- * \param[in] programId OpenGL program object ID
- *
- * Sets the specified program as the current rendering program. All
- * subsequent draw calls will use this program's shaders.
- */
-void eGL::useProgram(GLuint programId)
-{
-	ASSERT(tid_ == Thread::currentId());
-
-	glUseProgram(programId);
-}
-
-/**
- * \brief Delete a shader program
- * \param[in] programId OpenGL program object ID
- *
- * Deletes a shader program and frees associated resources. The program
- * must not be currently in use.
- */
-void eGL::deleteProgram(GLuint programId)
-{
-	ASSERT(tid_ == Thread::currentId());
-
-	glDeleteProgram(programId);
 }
 
 /**
@@ -520,8 +516,8 @@ void eGL::pushEnv(std::vector<std::string> &shaderEnv, const char *str)
  * \return 0 on success, or -EINVAL on compilation failure
  */
 int eGL::compileVertexShader(GLuint &shaderId,
-			     Span<const unsigned char> shaderData,
-			     Span<const std::string> shaderEnv)
+			     std::span<const unsigned char> shaderData,
+			     std::span<const std::string> shaderEnv)
 {
 	return compileShader(GL_VERTEX_SHADER, shaderId, shaderData, shaderEnv);
 }
@@ -538,8 +534,8 @@ int eGL::compileVertexShader(GLuint &shaderId,
  * \return 0 on success, or -EINVAL on compilation failure
  */
 int eGL::compileFragmentShader(GLuint &shaderId,
-			       Span<const unsigned char> shaderData,
-			       Span<const std::string> shaderEnv)
+			       std::span<const unsigned char> shaderData,
+			       std::span<const std::string> shaderEnv)
 {
 	return compileShader(GL_FRAGMENT_SHADER, shaderId, shaderData, shaderEnv);
 }
@@ -557,13 +553,13 @@ int eGL::compileFragmentShader(GLuint &shaderId,
  * \return 0 on success, or -EINVAL on compilation failure
  */
 int eGL::compileShader(int shaderType, GLuint &shaderId,
-		       Span<const unsigned char> shaderData,
-		       Span<const std::string> shaderEnv)
+		       std::span<const unsigned char> shaderData,
+		       std::span<const std::string> shaderEnv)
 {
 	GLint success;
 	size_t i;
 
-	ASSERT(tid_ == Thread::currentId());
+	assertThread();
 
 	auto count = 1 + shaderEnv.size();
 	auto shaderSourceData = std::make_unique<const GLchar *[]>(count);
@@ -610,7 +606,7 @@ void eGL::dumpShaderSource(GLuint shaderId)
 {
 	GLint shaderLength = 0;
 
-	ASSERT(tid_ == Thread::currentId());
+	assertThread();
 
 	glGetShaderiv(shaderId, GL_SHADER_SOURCE_LENGTH, &shaderLength);
 
@@ -643,7 +639,7 @@ int eGL::linkProgram(GLuint &programId, GLuint vertexshaderId, GLuint fragmentsh
 	GLenum err;
 	int ret = -ENODEV;
 
-	ASSERT(tid_ == Thread::currentId());
+	assertThread();
 
 	programId = glCreateProgram();
 	if (!programId) {

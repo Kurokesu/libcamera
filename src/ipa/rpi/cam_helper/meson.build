@@ -31,6 +31,7 @@ rpi_ipa_cam_helper_sources = files([
 
 rpi_ipa_cam_helper_includes = [
     include_directories('..'),
+    libipa_includes,
 ]
 
 subdir('imx500_tensor_parser')

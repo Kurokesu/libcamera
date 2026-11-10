@@ -124,11 +124,17 @@ private:
 	/* Number of frames that need to be marked as dropped on startup. */
 	unsigned int invalidCount_;
 
+	/* Number of frames hidden by the camera helper. */
+	unsigned int sensorInvalidCount_;
+
 	/* Frame timestamp for the last run of the controller. */
 	uint64_t lastRunTimestamp_;
 
 	/* Do we run a Controller::process() for this frame? */
 	bool processPending_;
+
+	/* Is this frame hidden by the camera helper? */
+	bool invalidFrame_;
 
 	/* Distinguish the first camera start from others. */
 	bool firstStart_;

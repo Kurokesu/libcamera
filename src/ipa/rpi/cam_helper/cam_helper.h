@@ -13,6 +13,8 @@
 
 #include <libcamera/base/utils.h>
 
+#include <libipa/pwl.h>
+
 #include "controller/camera_mode.h"
 #include "controller/controller.h"
 #include "controller/metadata.h"
@@ -40,6 +42,9 @@ namespace RPiController {
  *
  * A function to return the sensitivity of a given camera mode.
  *
+ * A function to return the decompanding curve of a given camera mode, used
+ * when rpi.decompand is listed in the tuning file.
+ *
  * A parser to parse the embedded data buffers provided by some sensors (for
  * example, the imx219 does; the ov5647 doesn't). This allows us to know for
  * sure the exposure and gain of the frame we're looking at. CamHelper
@@ -51,11 +56,12 @@ namespace RPiController {
  * modules may produce one or more frames that are not yet correctly exposed,
  * or where the metadata may be suspect. We have the following functions:
  * HideFramesStartup(): Tell the pipeline handler not to return this many
- *     frames at start-up. This can also be used to hide initial frames
- *     while the AGC and other algorithms are sorting themselves out.
+ *     frames at start-up. Statistics from these frames are not passed to
+ *     the control algorithms.
  * HideFramesModeSwitch(): Tell the pipeline handler not to return this
  *     many frames after a mode switch (other than start-up). Some sensors
- *     may produce innvalid frames after a mode switch; others may not.
+ *     may produce invalid frames after a mode switch; others may not.
+ *     Statistics from these frames are not passed to the control algorithms.
  * mistrustMetadataStartup(): At start-up, a sensor may return this number of
  *     frames with invalid metadata. This metadata cannot be relied upon by the
  *     control algorithms.
@@ -94,6 +100,7 @@ public:
 	virtual double gain(uint32_t gainCode) const = 0;
 	virtual bool sensorEmbeddedDataPresent() const;
 	virtual double getModeSensitivity(const CameraMode &mode) const;
+	virtual libcamera::ipa::Pwl decompandCurve(const CameraMode &mode) const;
 	virtual unsigned int hideFramesStartup() const;
 	virtual unsigned int hideFramesModeSwitch() const;
 	virtual unsigned int mistrustMetadataStartup() const;

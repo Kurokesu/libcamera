@@ -178,6 +178,11 @@ double CamHelper::getModeSensitivity([[maybe_unused]] const CameraMode &mode) co
 	return 1.0;
 }
 
+ipa::Pwl CamHelper::decompandCurve([[maybe_unused]] const CameraMode &mode) const
+{
+	return {};
+}
+
 unsigned int CamHelper::hideFramesStartup() const
 {
 	/*

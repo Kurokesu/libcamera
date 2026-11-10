@@ -223,6 +223,8 @@ int32_t IpaBase::configure(const IPACameraSensorInfo &sensorInfo, const ConfigPa
 	setMode(sensorInfo);
 
 	mode_.transform = static_cast<libcamera::Transform>(params.transform);
+	mode_.sensorHdr = params.sensorHdr;
+	mode_.decompandCurve = helper_->decompandCurve(mode_);
 
 	/* Pass the camera mode to the CamHelper to setup algorithms. */
 	helper_->setCameraMode(mode_);
@@ -381,6 +383,7 @@ void IpaBase::start(const ControlList &controls, StartResult *result)
 
 	result->startupFrameCount = std::max({ agcConvergenceFrames, awbConvergenceFrames });
 	result->invalidFrameCount = invalidCount_;
+	sensorInvalidCount_ = invalidCount_;
 
 	invalidCount_ = std::max({ invalidCount_, agcConvergenceFrames, awbConvergenceFrames });
 
@@ -476,6 +479,9 @@ void IpaBase::prepareIsp(const PrepareParams &params)
 	if (frameCount_ >= mistrustCount_)
 		helper_->prepare(embeddedBuffer, rpiMetadata);
 
+	/* processStats() may run after frameCount_ has moved to the next frame. */
+	invalidFrame_ = frameCount_ < sensorInvalidCount_;
+
 	bool delayedRequestControls = false;
 	delayedMetadata.get<bool>("ipa.request_controls", delayedRequestControls);
 
@@ -544,7 +550,8 @@ void IpaBase::processStats(const ProcessParams &params)
 		rpiMetadata.set("focus.status", statistics->focusRegions);
 
 		helper_->process(statistics, rpiMetadata);
-		controller_.process(statistics, &rpiMetadata);
+		if (!invalidFrame_)
+			controller_.process(statistics, &rpiMetadata);
 
 		/* Send any sync algorithm outputs back to the pipeline handler */
 		struct SyncStatus syncStatus;

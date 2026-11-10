@@ -29,6 +29,7 @@ public:
 	std::pair<uint32_t, int32_t>
 	getBlanking(Duration &exposure, Duration minFrameDuration,
 		    Duration maxFrameDuration) const override;
+	ipa::Pwl decompandCurve(const CameraMode &mode) const override;
 
 private:
 	/*
@@ -36,6 +37,14 @@ private:
 	 * in units of lines.
 	 */
 	static constexpr int frameIntegrationDiff = 4;
+
+	/* Driver Clear HDR compression: 1:1 up to the knee, 1/64 above it. */
+	static constexpr double ccmpBlackLevel = 200;
+	static constexpr double ccmpKnee = 1976;
+	static constexpr double ccmpRatio = 64;
+
+	/* White point below low gain saturation at any gain, on a PiSP LUT step. */
+	static constexpr double ccmpWhite = 3712;
 };
 
 /*
@@ -204,6 +213,29 @@ CamHelperImx585::getBlanking(Duration &exposure, Duration minFrameDuration,
 	exposure = CamHelper::exposure(expLines, lineLength);
 
 	return { newVblank, newHblank };
+}
+
+ipa::Pwl CamHelperImx585::decompandCurve(const CameraMode &mode) const
+{
+	/* 16-bit Clear HDR output is linear. */
+	if (!mode.sensorHdr || mode.bitdepth != 12)
+		return {};
+
+	/* Scale so the white code reaches full scale, black level stays at 3200. */
+	constexpr double scale = 16;
+	constexpr double blackOut = ccmpBlackLevel * scale;
+	constexpr double kneeIn = (ccmpBlackLevel + ccmpKnee) * scale;
+	constexpr double whiteIn = ccmpWhite * scale;
+	constexpr double whiteSignal = ccmpKnee + (whiteIn - kneeIn) / scale * ccmpRatio;
+	constexpr double gain = (65535 - blackOut) / whiteSignal;
+
+	ipa::Pwl curve;
+	curve.append(0, blackOut - ccmpBlackLevel * gain);
+	curve.append(kneeIn, blackOut + ccmpKnee * gain);
+	curve.append(whiteIn, 65535);
+	curve.append(4096 * scale, 65535);
+
+	return curve;
 }
 
 

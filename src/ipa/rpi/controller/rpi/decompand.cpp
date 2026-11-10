@@ -27,8 +27,14 @@ char const *Decompand::name() const
 int Decompand::read(const libcamera::ValueNode &params)
 {
 	config_.bitdepth = params["bitdepth"].get<uint32_t>(0);
-	config_.decompandCurve = params["decompand_curve"].get<ipa::Pwl>(ipa::Pwl{});
-	return config_.decompandCurve.empty() ? -EINVAL : 0;
+
+	if (params.contains("decompand_curve")) {
+		config_.decompandCurve = params["decompand_curve"].get<ipa::Pwl>(ipa::Pwl{});
+		if (config_.decompandCurve.empty())
+			return -EINVAL;
+	}
+
+	return 0;
 }
 
 void Decompand::initialise()
@@ -38,23 +44,26 @@ void Decompand::initialise()
 void Decompand::switchMode(CameraMode const &cameraMode,
 			   [[maybe_unused]] Metadata *metadata)
 {
-	mode_ = cameraMode;
+	/* A curve from camera helper takes precedence over the tuning file. */
+	if (!cameraMode.decompandCurve.empty())
+		curve_ = cameraMode.decompandCurve;
+	else if (config_.bitdepth == 0 || cameraMode.bitdepth == config_.bitdepth)
+		curve_ = config_.decompandCurve;
+	else
+		curve_ = {};
 }
 
 void Decompand::initialValues(libcamera::ipa::Pwl &decompandCurve)
 {
-	if (config_.bitdepth == 0 || mode_.bitdepth == config_.bitdepth) {
-		decompandCurve = config_.decompandCurve;
-	} else
-		decompandCurve = {};
+	decompandCurve = curve_;
 }
 
 void Decompand::prepare(Metadata *imageMetadata)
 {
 	DecompandStatus decompandStatus;
 
-	if (config_.bitdepth == 0 || mode_.bitdepth == config_.bitdepth) {
-		decompandStatus.decompandCurve = config_.decompandCurve;
+	if (!curve_.empty()) {
+		decompandStatus.decompandCurve = curve_;
 		imageMetadata->set("decompand.status", decompandStatus);
 	}
 }

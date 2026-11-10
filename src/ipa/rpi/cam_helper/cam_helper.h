@@ -13,6 +13,8 @@
 
 #include <libcamera/base/utils.h>
 
+#include <libipa/pwl.h>
+
 #include "controller/camera_mode.h"
 #include "controller/controller.h"
 #include "controller/metadata.h"
@@ -39,6 +41,9 @@ namespace RPiController {
  * A function to query if the sensor outputs embedded data that can be parsed.
  *
  * A function to return the sensitivity of a given camera mode.
+ *
+ * A function to return the decompanding curve of a given camera mode, used
+ * when rpi.decompand is listed in the tuning file.
  *
  * A parser to parse the embedded data buffers provided by some sensors (for
  * example, the imx219 does; the ov5647 doesn't). This allows us to know for
@@ -94,6 +99,7 @@ public:
 	virtual double gain(uint32_t gainCode) const = 0;
 	virtual bool sensorEmbeddedDataPresent() const;
 	virtual double getModeSensitivity(const CameraMode &mode) const;
+	virtual libcamera::ipa::Pwl decompandCurve(const CameraMode &mode) const;
 	virtual unsigned int hideFramesStartup() const;
 	virtual unsigned int hideFramesModeSwitch() const;
 	virtual unsigned int mistrustMetadataStartup() const;

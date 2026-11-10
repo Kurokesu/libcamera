@@ -37,6 +37,7 @@ struct BufferIds {
 
 struct ConfigParams {
 	uint32 transform;
+	bool sensorHdr;
 	libcamera.ControlInfoMap sensorControls;
 	libcamera.ControlInfoMap ispControls;
 	libcamera.ControlInfoMap lensControls;

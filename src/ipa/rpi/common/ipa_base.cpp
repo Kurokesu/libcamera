@@ -223,6 +223,7 @@ int32_t IpaBase::configure(const IPACameraSensorInfo &sensorInfo, const ConfigPa
 	setMode(sensorInfo);
 
 	mode_.transform = static_cast<libcamera::Transform>(params.transform);
+	mode_.sensorHdr = params.sensorHdr;
 
 	/* Pass the camera mode to the CamHelper to setup algorithms. */
 	helper_->setCameraMode(mode_);

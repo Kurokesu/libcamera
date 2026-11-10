@@ -1236,6 +1236,12 @@ int CameraData::configureIPA(const CameraConfiguration *config, ipa::RPi::Config
 	Transform transform = config->orientation / Orientation::Rotate0;
 	params.transform = static_cast<unsigned int>(transform);
 
+	/* Pass sensor HDR mode to the IPA. */
+	if (sensor_->controls().count(V4L2_CID_WIDE_DYNAMIC_RANGE)) {
+		ControlList ctrls = sensor_->getControls({ { V4L2_CID_WIDE_DYNAMIC_RANGE } });
+		params.sensorHdr = ctrls.get(V4L2_CID_WIDE_DYNAMIC_RANGE).get<int32_t>();
+	}
+
 	/* Ready the IPA - it must know about the sensor resolution. */
 	ret = ipa_->configure(sensorInfo_, params, result);
 	if (ret < 0) {

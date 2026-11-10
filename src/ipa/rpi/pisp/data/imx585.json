@@ -9,6 +9,11 @@
             }
         },
         {
+            "rpi.decompand":
+            {
+            }
+        },
+        {
             "rpi.lux":
             {
                 "reference_shutter_speed": 58061,

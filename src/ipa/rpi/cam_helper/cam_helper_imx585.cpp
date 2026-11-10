@@ -36,7 +36,7 @@ private:
 	 * Smallest difference between the frame length and integration time,
 	 * in units of lines.
 	 */
-	static constexpr int frameIntegrationDiff = 4;
+	static constexpr int frameIntegrationDiff = 8;
 
 	/* Frames for Clear HDR output to settle after standby release. */
 	static constexpr unsigned int hdrSettleFrames = 8;

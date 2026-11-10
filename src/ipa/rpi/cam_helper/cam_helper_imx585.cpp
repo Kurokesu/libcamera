@@ -38,6 +38,9 @@ private:
 	 */
 	static constexpr int frameIntegrationDiff = 4;
 
+	/* Frames for Clear HDR output to settle after standby release. */
+	static constexpr unsigned int hdrSettleFrames = 8;
+
 	/* Driver Clear HDR compression: 1:1 up to the knee, 1/64 above it. */
 	static constexpr double ccmpBlackLevel = 200;
 	static constexpr double ccmpKnee = 1976;
@@ -71,12 +74,20 @@ double CamHelperImx585::gain(uint32_t gainCode) const
 
 unsigned int CamHelperImx585::hideFramesStartup() const
 {
+	/* High and low gain reads settle unevenly and show false colour. */
+	if (mode_.sensorHdr)
+		return hdrSettleFrames;
+
 	/* On startup, we seem to get 1 bad frame. */
 	return 1;
 }
 
 unsigned int CamHelperImx585::hideFramesModeSwitch() const
 {
+	/* A mode switch restarts streaming from standby. */
+	if (mode_.sensorHdr)
+		return hdrSettleFrames;
+
 	/* After a mode switch, we seem to get 1 bad frame. */
 	return 1;
 }

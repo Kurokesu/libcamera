@@ -1,3 +1,18 @@
+libcamera (1:0.8.0+rpt20261104+krks1-1) trixie; urgency=medium
+
+  * Kurokesu fork of 0.8.0+rpt20261104, resynced from 0.7.2+rpt20260817.
+    Brings libcamera 0.8.0 with SONAME 0.8, so applications need a
+    rebuild, rpicam-apps 1.15 or later. Adds helpers for IMX675 and
+    IMX832.
+  * pipeline: rpi: Pass sensor HDR state to IPA. IPA sources decompand
+    curve from camera helper and withholds invalid frame statistics from
+    algorithms.
+  * IMX585: Fix Clear HDR. Output decompanded, settling frames hidden,
+    frame integration difference raised to 8, AGC gain allowed in single
+    exposure HDR. Unity ALSC luminance table silences start-up warning.
+
+ -- Danius Kalvaitis <danius@kurokesu.com>  Wed, 11 Nov 2026 12:46:30 +0200
+
 libcamera (1:0.7.2+rpt20260817+krks6-1) trixie; urgency=medium
 
   * IMX900: Calibrate mono tuning for Pi 4 and Pi 5. Lux, noise, GEQ,

@@ -94,6 +94,7 @@ Seed
     as source packages on archive.raspberrypi.com, so cross-check
     `debian/` against `.debian.tar.xz` of the matching version.
     0.7.2+rpt20260817-1 matched the seed apart from changelog entries.
+    0.8.0+rpt20261104-1 adds only the libcamera0.8 SONAME rename.
   * Reseed procedure (in order):
       1. Replace `debian/` wholesale with the new seed's contents.
       2. Run `quilt push -a` against the merged source to verify our

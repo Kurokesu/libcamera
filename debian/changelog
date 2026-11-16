@@ -1,3 +1,12 @@
+libcamera (1:0.8.0+rpt20261104+krks2-1) trixie; urgency=medium
+
+  * AR0822: Decompand eHDR output on Pi 5.
+  * AR0822: Clamp eHDR exposures to sensor limits.
+  * AR0822: Ramp AGC gain to 16x in single exposure HDR.
+  * AR0822: Add unity ALSC luminance table.
+
+ -- Danius Kalvaitis <danius@kurokesu.com>  Mon, 16 Nov 2026 20:15:00 +0200
+
 libcamera (1:0.8.0+rpt20261104+krks1-1) trixie; urgency=medium
 
   * Kurokesu fork of 0.8.0+rpt20261104, resynced from 0.7.2+rpt20260817.

@@ -7,12 +7,15 @@
  */
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <utility>
 
 #include "cam_helper.h"
 #include "md_parser.h"
 
 using namespace RPiController;
+using namespace libcamera;
 
 constexpr double temperatureSlope = 0.71;
 constexpr double temperatureCalibration = 60.0;
@@ -38,6 +41,10 @@ public:
 	uint32_t gainCode(double gain) const override;
 	double gain(uint32_t gainCode) const override;
 	bool sensorEmbeddedDataPresent() const override;
+	ipa::Pwl decompandCurve(const CameraMode &mode) const override;
+	std::pair<uint32_t, int32_t> getBlanking(utils::Duration &exposure,
+						 utils::Duration minFrameDuration,
+						 utils::Duration maxFrameDuration) const override;
 
 private:
 	/*
@@ -46,6 +53,28 @@ private:
 	 */
 	static constexpr int frameIntegrationDiff = 4;
 
+	/* Sensor HDR exposure limits. */
+	static constexpr int hdrExposureRatio = 16;
+	static constexpr int hdrExposureMargin = 35;
+	static constexpr int hdrExposureMax = 144 * hdrExposureRatio;
+
+	/* Data pedestal, added before companding. */
+	static constexpr double ccmpBlackLevel = 168;
+
+	/* 16-bit to 12-bit compander knees as (16-bit input, 12-bit output). */
+	static constexpr std::array<std::pair<double, double>, 7> ccmpKnees = { {
+		{ 0, 0 },
+		{ 1024, 1024 },
+		{ 2048, 1536 },
+		{ 4096, 2048 },
+		{ 8192, 2560 },
+		{ 16384, 3072 },
+		{ 32768, 3584 },
+	} };
+	static constexpr double ccmpWhite = 4095;
+	static constexpr double ccmpWhiteSignal = 32768 + (ccmpWhite - 3584) * 64;
+
+	int hdrExposureLimit(int frameLength) const;
 	void populateMetadata(const MdParser::RegisterMap &registers,
 			      Metadata &metadata) const override;
 };
@@ -74,6 +103,57 @@ double CamHelperAr0822::gain(uint32_t gainCode) const
 bool CamHelperAr0822::sensorEmbeddedDataPresent() const
 {
 	return true;
+}
+
+ipa::Pwl CamHelperAr0822::decompandCurve(const CameraMode &mode) const
+{
+	if (!mode.sensorHdr || mode.bitdepth != 12)
+		return {};
+
+	/* Scale so white code reaches full scale, black level stays at 2688. */
+	constexpr double scale = 16;
+	constexpr double blackOut = ccmpBlackLevel * scale;
+	constexpr double gain = (65535 - blackOut) / (ccmpWhiteSignal - ccmpBlackLevel);
+
+	ipa::Pwl curve;
+	for (const auto &[signal, code] : ccmpKnees)
+		curve.append(code * scale, blackOut + (signal - ccmpBlackLevel) * gain);
+	curve.append(ccmpWhite * scale, 65535);
+	curve.append(4096 * scale, 65535);
+
+	return curve;
+}
+
+/* Longest T1 that fits the frame in sensor HDR mode. */
+int CamHelperAr0822::hdrExposureLimit(int frameLength) const
+{
+	int t1t2Max = frameLength - hdrExposureMargin;
+	int t2Max = t1t2Max - static_cast<int>(mode_.height);
+	int t1 = std::min({ t1t2Max * hdrExposureRatio / (hdrExposureRatio + 1),
+			    t2Max * hdrExposureRatio, hdrExposureMax });
+
+	return std::max(t1, 1);
+}
+
+std::pair<uint32_t, int32_t>
+CamHelperAr0822::getBlanking(utils::Duration &exposure, utils::Duration minFrameDuration,
+			     utils::Duration maxFrameDuration) const
+{
+	if (!mode_.sensorHdr)
+		return CamHelper::getBlanking(exposure, minFrameDuration, maxFrameDuration);
+
+	utils::Duration lineLength = mode_.minLineLength;
+	int frameLengthMin = minFrameDuration / lineLength;
+	int frameLengthMax = maxFrameDuration / lineLength;
+	int t1 = std::min<uint32_t>(exposureLines(exposure, lineLength), hdrExposureMax);
+	int frameLength = std::max<int>(t1, mode_.height) + t1 / hdrExposureRatio +
+			  hdrExposureMargin;
+
+	frameLength = std::clamp(frameLength, frameLengthMin, frameLengthMax);
+	t1 = std::min(t1, hdrExposureLimit(frameLength));
+	exposure = CamHelper::exposure(t1, lineLength);
+
+	return { frameLength - mode_.height, lineLengthToHblank(lineLength) };
 }
 
 void CamHelperAr0822::populateMetadata(const MdParser::RegisterMap &registers,

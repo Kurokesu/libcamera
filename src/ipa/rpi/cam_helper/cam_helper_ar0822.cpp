@@ -7,12 +7,15 @@
  */
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <utility>
 
 #include "cam_helper.h"
 #include "md_parser.h"
 
 using namespace RPiController;
+using namespace libcamera;
 
 constexpr double temperatureSlope = 0.71;
 constexpr double temperatureCalibration = 60.0;
@@ -38,6 +41,7 @@ public:
 	uint32_t gainCode(double gain) const override;
 	double gain(uint32_t gainCode) const override;
 	bool sensorEmbeddedDataPresent() const override;
+	ipa::Pwl decompandCurve(const CameraMode &mode) const override;
 
 private:
 	/*
@@ -45,6 +49,22 @@ private:
 	 * in units of lines.
 	 */
 	static constexpr int frameIntegrationDiff = 4;
+
+	/* Data pedestal, added before companding. */
+	static constexpr double ccmpBlackLevel = 168;
+
+	/* 16-bit to 12-bit compander knees as (16-bit input, 12-bit output). */
+	static constexpr std::array<std::pair<double, double>, 7> ccmpKnees = { {
+		{ 0, 0 },
+		{ 1024, 1024 },
+		{ 2048, 1536 },
+		{ 4096, 2048 },
+		{ 8192, 2560 },
+		{ 16384, 3072 },
+		{ 32768, 3584 },
+	} };
+	static constexpr double ccmpWhite = 4095;
+	static constexpr double ccmpWhiteSignal = 32768 + (ccmpWhite - 3584) * 64;
 
 	void populateMetadata(const MdParser::RegisterMap &registers,
 			      Metadata &metadata) const override;
@@ -74,6 +94,25 @@ double CamHelperAr0822::gain(uint32_t gainCode) const
 bool CamHelperAr0822::sensorEmbeddedDataPresent() const
 {
 	return true;
+}
+
+ipa::Pwl CamHelperAr0822::decompandCurve(const CameraMode &mode) const
+{
+	if (!mode.sensorHdr || mode.bitdepth != 12)
+		return {};
+
+	/* Scale so white code reaches full scale, black level stays at 2688. */
+	constexpr double scale = 16;
+	constexpr double blackOut = ccmpBlackLevel * scale;
+	constexpr double gain = (65535 - blackOut) / (ccmpWhiteSignal - ccmpBlackLevel);
+
+	ipa::Pwl curve;
+	for (const auto &[signal, code] : ccmpKnees)
+		curve.append(code * scale, blackOut + (signal - ccmpBlackLevel) * gain);
+	curve.append(ccmpWhite * scale, 65535);
+	curve.append(4096 * scale, 65535);
+
+	return curve;
 }
 
 void CamHelperAr0822::populateMetadata(const MdParser::RegisterMap &registers,

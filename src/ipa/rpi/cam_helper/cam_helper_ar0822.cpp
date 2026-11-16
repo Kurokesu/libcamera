@@ -42,6 +42,9 @@ public:
 	double gain(uint32_t gainCode) const override;
 	bool sensorEmbeddedDataPresent() const override;
 	ipa::Pwl decompandCurve(const CameraMode &mode) const override;
+	std::pair<uint32_t, int32_t> getBlanking(utils::Duration &exposure,
+						 utils::Duration minFrameDuration,
+						 utils::Duration maxFrameDuration) const override;
 
 private:
 	/*
@@ -49,6 +52,11 @@ private:
 	 * in units of lines.
 	 */
 	static constexpr int frameIntegrationDiff = 4;
+
+	/* Sensor HDR exposure limits. */
+	static constexpr int hdrExposureRatio = 16;
+	static constexpr int hdrExposureMargin = 35;
+	static constexpr int hdrExposureMax = 144 * hdrExposureRatio;
 
 	/* Data pedestal, added before companding. */
 	static constexpr double ccmpBlackLevel = 168;
@@ -66,6 +74,7 @@ private:
 	static constexpr double ccmpWhite = 4095;
 	static constexpr double ccmpWhiteSignal = 32768 + (ccmpWhite - 3584) * 64;
 
+	int hdrExposureLimit(int frameLength) const;
 	void populateMetadata(const MdParser::RegisterMap &registers,
 			      Metadata &metadata) const override;
 };
@@ -113,6 +122,38 @@ ipa::Pwl CamHelperAr0822::decompandCurve(const CameraMode &mode) const
 	curve.append(4096 * scale, 65535);
 
 	return curve;
+}
+
+/* Longest T1 that fits the frame in sensor HDR mode. */
+int CamHelperAr0822::hdrExposureLimit(int frameLength) const
+{
+	int t1t2Max = frameLength - hdrExposureMargin;
+	int t2Max = t1t2Max - static_cast<int>(mode_.height);
+	int t1 = std::min({ t1t2Max * hdrExposureRatio / (hdrExposureRatio + 1),
+			    t2Max * hdrExposureRatio, hdrExposureMax });
+
+	return std::max(t1, 1);
+}
+
+std::pair<uint32_t, int32_t>
+CamHelperAr0822::getBlanking(utils::Duration &exposure, utils::Duration minFrameDuration,
+			     utils::Duration maxFrameDuration) const
+{
+	if (!mode_.sensorHdr)
+		return CamHelper::getBlanking(exposure, minFrameDuration, maxFrameDuration);
+
+	utils::Duration lineLength = mode_.minLineLength;
+	int frameLengthMin = minFrameDuration / lineLength;
+	int frameLengthMax = maxFrameDuration / lineLength;
+	int t1 = std::min<uint32_t>(exposureLines(exposure, lineLength), hdrExposureMax);
+	int frameLength = std::max<int>(t1, mode_.height) + t1 / hdrExposureRatio +
+			  hdrExposureMargin;
+
+	frameLength = std::clamp(frameLength, frameLengthMin, frameLengthMax);
+	t1 = std::min(t1, hdrExposureLimit(frameLength));
+	exposure = CamHelper::exposure(t1, lineLength);
+
+	return { frameLength - mode_.height, lineLengthToHblank(lineLength) };
 }
 
 void CamHelperAr0822::populateMetadata(const MdParser::RegisterMap &registers,

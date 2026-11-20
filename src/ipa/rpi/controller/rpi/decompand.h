@@ -25,8 +25,8 @@ public:
 	void prepare(Metadata *imageMetadata) override;
 
 private:
-	CameraMode mode_;
 	DecompandConfig config_;
+	libcamera::ipa::Pwl curve_;
 };
 
 } /* namespace RPiController */

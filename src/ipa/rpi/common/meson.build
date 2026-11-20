@@ -6,6 +6,7 @@ rpi_ipa_common_sources = files([
 
 rpi_ipa_common_includes = [
     include_directories('..'),
+    libipa_includes,
 ]
 
 rpi_ipa_common_deps = [

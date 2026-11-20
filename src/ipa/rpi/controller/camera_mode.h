@@ -10,6 +10,8 @@
 
 #include <libcamera/base/utils.h>
 
+#include <libipa/pwl.h>
+
 /*
  * Description of a "camera mode", holding enough information for control
  * algorithms to adapt their behaviour to the different modes of the camera,
@@ -58,4 +60,6 @@ struct CameraMode {
 	double maxAnalogueGain;
 	/* sensor HDR state */
 	bool sensorHdr;
+	/* decompand curve of this mode */
+	libcamera::ipa::Pwl decompandCurve;
 };

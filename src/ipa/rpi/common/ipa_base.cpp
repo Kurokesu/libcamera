@@ -373,6 +373,7 @@ void IpaBase::start(const ControlList &controls, StartResult *result)
 
 	result->startupFrameCount = std::max({ agcConvergenceFrames, awbConvergenceFrames });
 	result->invalidFrameCount = invalidCount_;
+	hiddenFrameCount_ = invalidCount_;
 
 	invalidCount_ = std::max({ invalidCount_, agcConvergenceFrames, awbConvergenceFrames });
 
@@ -467,6 +468,12 @@ void IpaBase::prepareIsp(const PrepareParams &params)
 	if (frameCount_ >= mistrustCount_)
 		helper_->prepare(embeddedBuffer, rpiMetadata);
 
+	/*
+	 * Without inline statistics, processStats() runs after frameCount_ has
+	 * been incremented, so record here whether this frame is hidden.
+	 */
+	hiddenFrame_ = frameCount_ < hiddenFrameCount_;
+
 	bool delayedRequestControls = false;
 	delayedMetadata.get<bool>("ipa.request_controls", delayedRequestControls);
 
@@ -534,7 +541,8 @@ void IpaBase::processStats(const ProcessParams &params)
 		rpiMetadata.set("focus.status", statistics->focusRegions);
 
 		helper_->process(statistics, rpiMetadata);
-		controller_.process(statistics, &rpiMetadata);
+		if (!hiddenFrame_)
+			controller_.process(statistics, &rpiMetadata);
 	}
 
 	struct AgcStatus agcStatus;

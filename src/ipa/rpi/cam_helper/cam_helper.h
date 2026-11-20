@@ -51,8 +51,8 @@ namespace RPiController {
  * modules may produce one or more frames that are not yet correctly exposed,
  * or where the metadata may be suspect. We have the following functions:
  * HideFramesStartup(): Tell the pipeline handler not to return this many
- *     frames at start-up. This can also be used to hide initial frames
- *     while the AGC and other algorithms are sorting themselves out.
+ *     frames at start-up. Statistics from frames hidden at start-up or
+ *     after a mode switch are not passed to the control algorithms.
  * HideFramesModeSwitch(): Tell the pipeline handler not to return this
  *     many frames after a mode switch (other than start-up). Some sensors
  *     may produce innvalid frames after a mode switch; others may not.

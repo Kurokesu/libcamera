@@ -56,4 +56,6 @@ struct CameraMode {
 	/* Mode specific analogue gain limits */
 	double minAnalogueGain;
 	double maxAnalogueGain;
+	/* sensor HDR state */
+	bool sensorHdr;
 };

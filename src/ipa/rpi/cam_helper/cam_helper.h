@@ -42,8 +42,7 @@ namespace RPiController {
  *
  * A function to return the sensitivity of a given camera mode.
  *
- * A function to return the decompanding curve of a given camera mode, used
- * when rpi.decompand is listed in the tuning file.
+ * A function to return the decompand curve of a given camera mode.
  *
  * A parser to parse the embedded data buffers provided by some sensors (for
  * example, the imx219 does; the ov5647 doesn't). This allows us to know for
@@ -56,12 +55,11 @@ namespace RPiController {
  * modules may produce one or more frames that are not yet correctly exposed,
  * or where the metadata may be suspect. We have the following functions:
  * HideFramesStartup(): Tell the pipeline handler not to return this many
- *     frames at start-up. Statistics from these frames are not passed to
- *     the control algorithms.
+ *     frames at start-up. Statistics from frames hidden at start-up or
+ *     after a mode switch are not passed to the control algorithms.
  * HideFramesModeSwitch(): Tell the pipeline handler not to return this
  *     many frames after a mode switch (other than start-up). Some sensors
- *     may produce invalid frames after a mode switch; others may not.
- *     Statistics from these frames are not passed to the control algorithms.
+ *     may produce innvalid frames after a mode switch; others may not.
  * mistrustMetadataStartup(): At start-up, a sensor may return this number of
  *     frames with invalid metadata. This metadata cannot be relied upon by the
  *     control algorithms.

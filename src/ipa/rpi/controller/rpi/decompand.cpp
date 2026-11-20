@@ -44,7 +44,7 @@ void Decompand::initialise()
 void Decompand::switchMode(CameraMode const &cameraMode,
 			   [[maybe_unused]] Metadata *metadata)
 {
-	/* A curve from camera helper takes precedence over the tuning file. */
+	/* Camera helper curve takes precedence over the tuning file. */
 	if (!cameraMode.decompandCurve.empty())
 		curve_ = cameraMode.decompandCurve;
 	else if (config_.bitdepth == 0 || cameraMode.bitdepth == config_.bitdepth)

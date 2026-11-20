@@ -58,8 +58,8 @@ struct CameraMode {
 	/* Mode specific analogue gain limits */
 	double minAnalogueGain;
 	double maxAnalogueGain;
-	/* sensor HDR mode, from V4L2_CID_WIDE_DYNAMIC_RANGE */
+	/* sensor HDR state */
 	bool sensorHdr;
-	/* decompanding curve, from camera helper */
+	/* decompand curve of this mode */
 	libcamera::ipa::Pwl decompandCurve;
 };

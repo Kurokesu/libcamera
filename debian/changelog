@@ -1,3 +1,12 @@
+libcamera (1:0.8.0+rpt20261104+krks3-1) trixie; urgency=medium
+
+  * IMX462: Add mono tuning files for Pi 4 and Pi 5, derived from colour
+    tuning.
+  * pipeline: rpi: Skip sensor HDR state when control read returns
+    empty.
+
+ -- Danius Kalvaitis <danius@kurokesu.com>  Thu, 26 Nov 2026 14:20:30 +0200
+
 libcamera (1:0.8.0+rpt20261104+krks2-1) trixie; urgency=medium
 
   * AR0822: Decompand eHDR output on Pi 5.
